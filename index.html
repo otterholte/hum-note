@@ -853,9 +853,12 @@ let AC=null; const ac=()=>{ if(!AC) AC=new (window.AudioContext||window.webkitAu
 const fmt=t=>`${Math.floor(t/60)}:${(t%60).toFixed(1).padStart(4,'0')}`;
 
 // --- analysis runs in a worker so the page stays responsive
-const workerSrc=$('core').textContent+`;onmessage=e=>{const F=Hum.frames(Hum.track(e.data.x,e.data.sr));postMessage(F);}`;
+const workerSrc=$('core').textContent+`;onmessage=e=>{const tr=Hum.track(e.data.x,e.data.sr); if(e.data.sw) Hum.useSwift(tr,e.data.sw); postMessage(Hum.frames(tr));}`;
 let worker=null; try{ worker=new Worker(URL.createObjectURL(new Blob([workerSrc],{type:'text/javascript'}))); }catch(e){}
-function analyze(x,sr){ return new Promise(res=>{ if(!worker){ res(Hum.frames(Hum.track(x,sr))); return; } worker.onmessage=e=>res(e.data); worker.onerror=()=>res(Hum.frames(Hum.track(x,sr))); worker.postMessage({x,sr}); }); }
+function analyzeYin(x,sr,sw){ return new Promise(res=>{ const go=()=>{ const tr=Hum.track(x,sr); if(sw) Hum.useSwift(tr,sw); return Hum.frames(tr); }; if(!worker){ res(go()); return; } worker.onmessage=e=>res(e.data); worker.onerror=()=>res(go()); worker.postMessage({x,sr,sw}); }); }
+// The AI pitch model (SwiftF0) reads the whole take (16 kHz), then the usual note pipeline runs on its pitch.
+// Falls back to the classic detector if the model is off, missing or slow to load.
+async function analyze(x,sr){ let sw=null; if(st.det!=='classic'&&sr===16000){ swiftStart(); for(let i=0;i<60&&SW.w&&!SW.ready&&!SW.fail;i++) await new Promise(r=>setTimeout(r,100)); if(SW.ready&&!SW.fail) sw=await swiftWhole(x); } return analyzeYin(x,sr,sw); }
 
 async function toMono16k(buffer){
   const sr=16000, len=Math.ceil(buffer.duration*sr);
@@ -1497,12 +1500,21 @@ function yin(x,sr){ // small YIN for the live tuner
 var SW={w:null,ready:false,busy:false,f:0,c:0,t:0,fail:false,asked:0};
 const SW_WORKER=`importScripts(BASE+'vendor/ort/ort.wasm.min.js'); ort.env.wasm.wasmPaths=BASE+'vendor/ort/'; ort.env.wasm.numThreads=1;
 let sess=null; ort.InferenceSession.create(BASE+'models/swiftf0.onnx',{executionProviders:['wasm']}).then(x=>{ sess=x; postMessage({ready:1}); }).catch(e=>postMessage({error:String(e)}));
-onmessage=async e=>{ if(!sess) return; try{ const x=e.data.x; const r=await sess.run({audio:new ort.Tensor('float32',x,[1,x.length]),fmin:new ort.Tensor('float32',[46.875],[]),fmax:new ort.Tensor('float32',[2093.75],[])});
+const run1=async x=>{ const r=await sess.run({audio:new ort.Tensor('float32',x,[1,x.length]),fmin:new ort.Tensor('float32',[46.875],[]),fmax:new ort.Tensor('float32',[2093.75],[])}); return [r.pitch.data,r.confidence.data]; };
+async function whole(x){ const H=256, n=Math.max(1,Math.floor(x.length/H)), f0=new Float32Array(n), conf=new Float32Array(n);
+  for(let s=0;s<n;s+=1875){ const e=Math.min(s+1875,n), l=Math.max(0,s-11), w=e<n?x.subarray(l*H,(e+10)*H):x.subarray(l*H); const [P,C]=await run1(w);
+    for(let i=s;i<e;i++){ f0[i]=P[i-l]||0; conf[i]=C[i-l]||0; } }
+  for(let i=0;i<n;i++){ let pk=0; for(let j=i*H;j<Math.min(x.length,(i+1)*H);j++){ const a=Math.abs(x[j]); if(a>pk) pk=a; } if(pk<1e-3) conf[i]=0; }
+  const t=new Float32Array(n); for(let i=0;i<n;i++) t[i]=i*H/16000; return {t,f0,conf}; }
+onmessage=async e=>{ if(!sess) return; if(e.data.whole){ try{ const r=await whole(e.data.whole); postMessage({whole:r}); }catch(err){ postMessage({whole:null}); } return; } try{ const x=e.data.x; const r=await sess.run({audio:new ort.Tensor('float32',x,[1,x.length]),fmin:new ort.Tensor('float32',[46.875],[]),fmax:new ort.Tensor('float32',[2093.75],[])});
   const P=r.pitch.data, C=r.confidence.data, k=Math.max(0,C.length-3); postMessage({f:P[k],c:C[k]}); }catch(err){ postMessage({f:0,c:0}); } };`;
 function swiftStart(){ if(SW.w||SW.fail||st.det==='classic'||!/^https?:$/.test(location.protocol)) return;
   try{ const base=location.href.replace(/[?#].*$/,'').replace(/[^/]*$/,''); SW.w=new Worker(URL.createObjectURL(new Blob([`const BASE=${JSON.stringify(base)};`+SW_WORKER],{type:'text/javascript'})));
-    SW.w.onmessage=e=>{ const d=e.data; if(d.ready){ SW.ready=true; tDet(); } else if(d.error){ SW.fail=true; tDet(); } else { SW.busy=false; SW.f=d.f; SW.c=d.c; SW.t=performance.now(); } };
+    SW.w.onmessage=e=>{ const d=e.data; if('whole' in d){ SW.busy=false; const cb=SW.wcb; SW.wcb=null; if(cb) cb(d.whole); return; } if(d.ready){ SW.ready=true; tDet(); } else if(d.error){ SW.fail=true; tDet(); } else { SW.busy=false; SW.f=d.f; SW.c=d.c; SW.t=performance.now(); } };
     SW.w.onerror=()=>{ SW.fail=true; tDet(); }; }catch(e){ SW.fail=true; } }
+function swiftWhole(x){ return new Promise(res=>{ if(!SW.ready||SW.fail){ res(null); return; } let pk=0; for(let i=0;i<x.length;i++){ const a=Math.abs(x[i]); if(a>pk) pk=a; }
+  const y=new Float32Array(x.length), g=pk>0?0.9/pk:1; for(let i=0;i<x.length;i++) y[i]=x[i]*g;
+  const to=setTimeout(()=>{ if(SW.wcb){ SW.wcb=null; res(null); } },60000); SW.wcb=r=>{ clearTimeout(to); res(r&&r.t.length?r:null); }; SW.busy=true; SW.w.postMessage({whole:y},[y.buffer]); }); }
 function swiftAsk(r){ if(!SW.ready||SW.busy) return; const now=performance.now(); if(now-SW.asked<28) return; SW.asked=now;
   const n=14*256, q=r.sr/16000, L=r.ring.length, x=new Float32Array(n), wq=Math.max(1,Math.round(q)); let pk=0;
   for(let i=0;i<n;i++){ const pos=r.w-(n-i)*q; let s2=0; for(let k=0;k<wq;k++) s2+=r.ring[((Math.floor(pos)+k)%L+L)%L]; x[i]=s2/wq; const a=Math.abs(x[i]); if(a>pk) pk=a; }
