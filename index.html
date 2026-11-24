@@ -363,6 +363,13 @@ const Hum = (() => {
     return {f0,ap,db,ds,n,dt:hop/sr,t0:W/2/sr};
   }
 
+  // 1b. Use a SwiftF0 pitch track (16 ms hop, from the browser model) in place of YIN's pitch: it holds onto
+  //     vibrato, breathy and quiet singing that YIN drops. YIN's loudness (db) is kept for syllable splits.
+  function useSwift(tr,sw){ const {n,dt,t0}=tr, T=sw.t, f=sw.f0, c=sw.conf; let k=0; const ok=j=>c[j]>=0.5&&f[j]>0;
+    for(let i=0;i<n;i++){ const t=t0+i*dt; while(k+1<T.length&&T[k+1]<=t) k++; const a=k, b=Math.min(T.length-1,k+1);
+      let v=0; if(ok(a)&&ok(b)){ const w=T[b]>T[a]?(t-T[a])/(T[b]-T[a]):0; v=Math.exp(Math.log(f[a])*(1-w)+Math.log(f[b])*w); } else if(ok(a)&&t-T[a]<0.02) v=f[a]; else if(ok(b)&&T[b]-t<0.02) v=f[b];
+      if(v>0){ tr.f0[i]=v; tr.ap[i]=0.05; } else tr.ap[i]=1; }
+    tr.swift=true; return tr; }
   // 2. Frame-level cleanup: voicing, MIDI float, octave-jump repair, smoothing
   function frames(tr){
     const {f0,ap,db,n}=tr;
@@ -370,7 +377,7 @@ const Hum = (() => {
     const voiced=new Uint8Array(n), m=new Float64Array(n);
     for(let i=0;i<n;i++){
       m[i]=69+12*Math.log2(f0[i]/440);
-      voiced[i]= (ap[i]<0.3 && db[i]>peak-32 && f0[i]>65 && f0[i]<1400)?1:0;
+      voiced[i]= (ap[i]<0.3 && db[i]>peak-(tr.swift?48:32) && f0[i]>(tr.swift?46:65) && f0[i]<1400)?1:0;
     }
     // octave repair against a local median of voiced frames
     for(let pass=0;pass<2;pass++){
@@ -830,7 +837,7 @@ const Hum = (() => {
     return new Uint8Array([0x4D,0x54,0x68,0x64,0,0,0,6,0,0,0,1,(PPQ>>8),PPQ&255, 0x4D,0x54,0x72,0x6B,(L>>>24)&255,(L>>16)&255,(L>>8)&255,L&255,...tr]);
   }
 
-  return {track,frames,tuningCurve,detectKey,decode,refine,transcribe,name,flatName,toMidi,tempo,quantize,vibrato,followDrift,driftKey,applyDrift,NAMES,FLATS};
+  return {track,frames,tuningCurve,detectKey,decode,refine,transcribe,name,flatName,toMidi,tempo,quantize,vibrato,followDrift,driftKey,applyDrift,useSwift,NAMES,FLATS};
 })();
 if(typeof module!=='undefined') module.exports=Hum;
 
