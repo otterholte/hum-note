@@ -360,16 +360,33 @@ const Hum = (() => {
       if(best>tauMin&&den>0) t=best+0.5*(a-c)/den;
       f0[i]=sr/t; ap[i]=d[best];
     }
-    return {f0,ap,db,ds,n,dt:hop/sr,t0:W/2/sr};
+    return {f0,ap,db,ds,nv:colourChange(x,sr,hop,W,n),n,dt:hop/sr,t0:W/2/sr};
   }
+  // How fast the sound's colour (vowel/consonant) changes, frame by frame: log energy in 14 bands
+  // (100 Hz - 5 kHz) with loudness removed, compared 60 ms before vs after. Peaks = new syllables,
+  // even when the voice doesn't get quieter between them ("row, row, row" sung smoothly).
+  function colourChange(x,sr,hop,W,n){
+    const N=512, half=N/2, re=new Float64Array(N), im=new Float64Array(N), win=new Float64Array(N); for(let j=0;j<N;j++) win[j]=0.5-0.5*Math.cos(2*Math.PI*j/N);
+    const NB=14, mel=f=>2595*Math.log10(1+f/700), imel=m=>700*(10**(m/2595)-1), m0=mel(100), m1=mel(Math.min(5000,sr/2-100));
+    const edges=[]; for(let k=0;k<=NB;k++) edges.push(Math.max(1,Math.round(imel(m0+(m1-m0)*k/NB)*N/sr)));
+    const B=new Float32Array(n*NB), nv=new Float32Array(n);
+    for(let i=0;i<n;i++){ const s=i*hop+((W-N)>>1);
+      for(let j=0;j<N;j++){ const v=x[s+j]; re[j]=(v===undefined?0:v)*win[j]; im[j]=0; } fft(re,im);
+      let mean=0; for(let k=0;k<NB;k++){ let e=1e-10; for(let b=edges[k];b<Math.max(edges[k]+1,edges[k+1]);b++) e+=re[b]*re[b]+im[b]*im[b]; const l=10*Math.log10(e); B[i*NB+k]=l; mean+=l; }
+      mean/=NB; for(let k=0;k<NB;k++) B[i*NB+k]-=mean; }
+    const H=6; for(let i=H;i<n-H;i++){ let d=0; for(let k=0;k<NB;k++){ let a=0,b=0; for(let j=1;j<=H;j++){ a+=B[(i-j)*NB+k]; b+=B[(i+j)*NB+k]; } const q=(b-a)/H; d+=q*q; } nv[i]=Math.sqrt(d/NB); }
+    return nv; }
+  function fft(re,im){ const n=re.length; for(let i=1,j=0;i<n;i++){ let bit=n>>1; for(;j&bit;bit>>=1) j^=bit; j^=bit; if(i<j){ let t=re[i]; re[i]=re[j]; re[j]=t; t=im[i]; im[i]=im[j]; im[j]=t; } }
+    for(let len=2;len<=n;len<<=1){ const a=-2*Math.PI/len, wr=Math.cos(a), wi=Math.sin(a); for(let i=0;i<n;i+=len){ let cr=1,ci=0; for(let j=0;j<len/2;j++){ const ur=re[i+j],ui=im[i+j], k=i+j+len/2, vr=re[k]*cr-im[k]*ci, vi=re[k]*ci+im[k]*cr; re[i+j]=ur+vr; im[i+j]=ui+vi; re[k]=ur-vr; im[k]=ui-vi; const t=cr*wr-ci*wi; ci=cr*wi+ci*wr; cr=t; } } } }
 
   // 1b. Use a SwiftF0 pitch track (16 ms hop, from the browser model) in place of YIN's pitch: it holds onto
   //     vibrato, breathy and quiet singing that YIN drops. YIN's loudness (db) is kept for syllable splits.
-  function useSwift(tr,sw){ const {n,dt,t0}=tr, T=sw.t, f=sw.f0, c=sw.conf; let k=0; const ok=j=>c[j]>=0.5&&f[j]>0;
-    for(let i=0;i<n;i++){ const t=t0+i*dt; while(k+1<T.length&&T[k+1]<=t) k++; const a=k, b=Math.min(T.length-1,k+1);
+  function swiftMask(tr,sw){ const F=frames(useSwift({...tr,f0:tr.f0.slice(),ap:tr.ap.slice(),db:tr.db.slice(),ds:tr.ds.slice()},sw)), n=tr.n, m=new Uint8Array(n), W=15; for(let i=0;i<n;i++) if(F.vib[i]) for(let j=Math.max(0,i-W);j<=Math.min(n-1,i+W);j++) m[j]=1; return m; }
+  function useSwift(tr,sw,mask){ const {n,dt,t0}=tr, T=sw.t, f=sw.f0, c=sw.conf; let k=0; const ok=j=>c[j]>=0.5&&f[j]>0;
+    for(let i=0;i<n;i++){ const t=t0+i*dt; while(k+1<T.length&&T[k+1]<=t) k++; if(mask&&!mask[i]) continue; const a=k, b=Math.min(T.length-1,k+1);
       let v=0; if(ok(a)&&ok(b)){ const w=T[b]>T[a]?(t-T[a])/(T[b]-T[a]):0; v=Math.exp(Math.log(f[a])*(1-w)+Math.log(f[b])*w); } else if(ok(a)&&t-T[a]<0.02) v=f[a]; else if(ok(b)&&T[b]-t<0.02) v=f[b];
       if(v>0){ tr.f0[i]=v; tr.ap[i]=0.05; } else tr.ap[i]=1; }
-    tr.swift=true; return tr; }
+    if(!mask) tr.swift=true; return tr; }
   // 2. Frame-level cleanup: voicing, MIDI float, octave-jump repair, smoothing
   function frames(tr){
     const {f0,ap,db,n}=tr;
@@ -409,7 +426,7 @@ const Hum = (() => {
           for(let k=Math.max(i,A-half);k<Math.min(e,B+half);k++){ let s=0,w=0; for(let j=k-half;j<=k+half;j++){ if(j<i||j>=e) continue; const g=(j===k-half||j===k+half)?0.5:1; s+=g*ms[j]; w+=g; } mv[k]=s/w; vib[k]=1; } }
         c0=c; }
       i=e; }
-    return {m:ms,mv,vib,voiced,stable,db,ds:tr.ds,peak,n,dt:tr.dt,t0:tr.t0};
+    return {m:ms,mv,vib,voiced,stable,db,ds:tr.ds,nv:tr.nv,peak,n,dt:tr.dt,t0:tr.t0};
   }
 
   // 3. Tuning: where does THIS singer's semitone grid sit? (circular mean of the fractional pitch)
@@ -498,6 +515,10 @@ const Hum = (() => {
       for(let i=a+6;i<b-6;i++){
         let L=-99,R=-99; for(let q=i-12;q<i;q++) if(q>=a) L=Math.max(L,ds[q]); for(let q=i+1;q<=i+12;q++) if(q<b) R=Math.max(R,ds[q]);
         if(ds[i]<L-5&&ds[i]<R-5&&ds[i]<=ds[i-1]&&ds[i]<=ds[i+1]&&!cuts.some(c=>Math.abs(c[0]-i)<8)) cuts.push([i,i+1]); }
+      // a change of vowel/consonant on one pitch (a new syllable), with at least a small dip in level
+      if(F.nv) for(let i=a+8;i<b-8;i++){ const v=F.nv[i]; if(v<5.0*((F.vib&&F.vib[i])?99:1)) continue; let pk=true; for(let q=i-5;q<=i+5;q++) if(F.nv[q]>v){ pk=false; break; } if(!pk) continue;
+        let L=-99,R=-99,lo=99; for(let q=i-12;q<i-2;q++) if(q>=a) L=Math.max(L,ds[q]); for(let q=i+3;q<=i+12;q++) if(q<b) R=Math.max(R,ds[q]); for(let q=i-3;q<=i+3;q++) lo=Math.min(lo,ds[q]);
+        if(lo<Math.min(L,R)-0.5&&!cuts.some(c=>Math.abs(c[0]-i)<12)) cuts.push([i,i+1]); }
       cuts.sort((x,y)=>x[0]-y[0]);
       const out=[]; let st=a; cuts.forEach(([c0,c1])=>{ out.push([st,c0,1]); st=c1; }); out.push([st,b,0]); out.forEach((p,i)=>p[2]=i>0?1:0); return out;
     }
@@ -676,6 +697,12 @@ const Hum = (() => {
           let h=k; while(h>0&&(fin[h].b-fin[h].a)*F.dt<0.3&&fin[h].a-fin[h-1].b<=3&&!fin[h].cut) h--;
           if(h<k&&(fin[h].b-fin[h].a)*F.dt>=0.35&&fin.slice(h+1,k+1).every(t=>Math.abs(t.pitch-fin[h].pitch)<=2)){ fin[h].b=fin[k].b; fin.splice(h+1,k-h); }
           k=h; } }
+      // i) X, X±1, X where the middle note's sung centre is within ~0.7 st of X: the same note sung a little
+      //    flat/sharp (often with wide vibrato), not a real neighbour note — a real neighbour sits on its own pitch
+      { for(let k=1;k<fin.length-1;k++){ const p=fin[k-1], o=fin[k], q=fin[k+1]; if(p.pitch!==q.pitch||Math.abs(o.pitch-p.pitch)!==1||o.orn) continue;
+          if(o.a-p.b>Math.round(0.25/F.dt)||q.a-o.b>Math.round(0.25/F.dt)) continue;
+          const c=(o.b-o.a)*F.dt>=0.25?base(o):center(o); if(Math.abs(c-p.pitch)<0.7) o.pitch=p.pitch; }
+        const out2=[]; for(const o of fin){ const p=out2[out2.length-1]; if(p&&p.pitch===o.pitch&&!o.cut&&o.a-p.b<=3){ p.b=o.b; continue; } out2.push(o); } fin=out2; }
       // h) a passing note: between two notes a step or more apart, the voice briefly rests (0.07 s+) on a note in
       //    between — that is a note too (a fast slide straight through doesn't rest anywhere, so it isn't)
       { const RUN=Math.round(0.07/F.dt), out2=[];
@@ -746,6 +773,10 @@ const Hum = (() => {
   // fold the drift Viterbi found (per note) into the tuning curve itself
   function applyDrift(F,tune,dnotes){ const pts=dnotes.filter(n=>n.drift!=null).map(n=>[((n.start+n.end)/2-F.t0)/F.dt,n.drift/100]); if(!pts.length) return;
     for(let i=0;i<F.n;i++){ let o; if(i<=pts[0][0]) o=pts[0][1]; else if(i>=pts[pts.length-1][0]) o=pts[pts.length-1][1]; else { let k=0; while(pts[k+1][0]<i) k++; const [a,x]=pts[k],[b,y]=pts[k+1]; o=x+(y-x)*(i-a)/(b-a); } tune.curve[i]+=o; } }
+  // keep note names on the nearest standard (A440) semitone: if the singer's tuning estimate has wandered
+  // more than half a semitone away overall, shift the grid by one semitone (and the key with it)
+  function recenter(tune,key){ const c=tune.curve; if(!c.length) return key; let s=0; for(let i=0;i<c.length;i++) s+=c[i]; const mean=s/c.length; const sh=mean>0.5?-1:mean<-0.5?1:0; if(!sh) return key;
+    for(let i=0;i<c.length;i++) c[i]+=sh; if(!key) return key; const t=((key.tonic-sh)%12+12)%12; return {...key,tonic:t,scale:(key.mode==='major'?SC_MAJ:SC_MIN).map(i=>(i+t)%12),name:FLATS[t]+' '+key.mode}; }
   // the key that makes the most musical sense once drift is allowed for (every key is tried)
   function driftKey(notes){ if(notes.length<4) return null; let best=null;
     for(let t=0;t<12;t++) for(const mode of ['major','minor']){ const sc=(mode==='major'?SC_MAJ:[0,2,3,5,7,8,10]).map(i=>(i+t)%12), k={tonic:t,mode,scale:sc,conf:1};
@@ -837,7 +868,7 @@ const Hum = (() => {
     return new Uint8Array([0x4D,0x54,0x68,0x64,0,0,0,6,0,0,0,1,(PPQ>>8),PPQ&255, 0x4D,0x54,0x72,0x6B,(L>>>24)&255,(L>>16)&255,(L>>8)&255,L&255,...tr]);
   }
 
-  return {track,frames,tuningCurve,detectKey,decode,refine,transcribe,name,flatName,toMidi,tempo,quantize,vibrato,followDrift,driftKey,applyDrift,useSwift,NAMES,FLATS};
+  return {track,frames,tuningCurve,detectKey,decode,refine,transcribe,name,flatName,toMidi,tempo,quantize,vibrato,followDrift,driftKey,applyDrift,recenter,useSwift,swiftMask,NAMES,FLATS};
 })();
 if(typeof module!=='undefined') module.exports=Hum;
 
@@ -853,10 +884,11 @@ let AC=null; const ac=()=>{ if(!AC) AC=new (window.AudioContext||window.webkitAu
 const fmt=t=>`${Math.floor(t/60)}:${(t%60).toFixed(1).padStart(4,'0')}`;
 
 // --- analysis runs in a worker so the page stays responsive
-const workerSrc=$('core').textContent+`;onmessage=e=>{const tr=Hum.track(e.data.x,e.data.sr); if(e.data.sw) Hum.useSwift(tr,e.data.sw); postMessage(Hum.frames(tr));}`;
+const workerSrc=$('core').textContent+`;onmessage=e=>{const tr=Hum.track(e.data.x,e.data.sr); if(e.data.sw) Hum.useSwift(tr,e.data.sw,Hum.swiftMask(tr,e.data.sw)); postMessage(Hum.frames(tr));}`;
 let worker=null; try{ worker=new Worker(URL.createObjectURL(new Blob([workerSrc],{type:'text/javascript'}))); }catch(e){}
-function analyzeYin(x,sr,sw){ return new Promise(res=>{ const go=()=>{ const tr=Hum.track(x,sr); if(sw) Hum.useSwift(tr,sw); return Hum.frames(tr); }; if(!worker){ res(go()); return; } worker.onmessage=e=>res(e.data); worker.onerror=()=>res(go()); worker.postMessage({x,sr,sw}); }); }
-// The AI pitch model (SwiftF0) reads the whole take (16 kHz), then the usual note pipeline runs on its pitch.
+function analyzeYin(x,sr,sw){ return new Promise(res=>{ const go=()=>{ const tr=Hum.track(x,sr); if(sw) Hum.useSwift(tr,sw,Hum.swiftMask(tr,sw)); return Hum.frames(tr); }; if(!worker){ res(go()); return; } worker.onmessage=e=>res(e.data); worker.onerror=()=>res(go()); worker.postMessage({x,sr,sw}); }); }
+// The AI pitch model (SwiftF0) reads the whole take (16 kHz); its pitch is used where you sing with vibrato
+// (it follows wide vibrato much better), the classic detector everywhere else.
 // Falls back to the classic detector if the model is off, missing or slow to load.
 async function analyze(x,sr){ let sw=null; if(st.det!=='classic'&&sr===16000){ swiftStart(); for(let i=0;i<60&&SW.w&&!SW.ready&&!SW.fail;i++) await new Promise(r=>setTimeout(r,100)); if(SW.ready&&!SW.fail) sw=await swiftWhole(x); } return analyzeYin(x,sr,sw); }
 
@@ -883,7 +915,7 @@ function redecode(fresh){
   if(notes.length>=3){ key=Hum.detectKey(notes); if(st.key>0) notes=Hum.decode(F,tune,key,opt); key=Hum.detectKey(notes); }
   if(notes.length>=4) Hum.refine(F,tune,notes);
   notes=Hum.decode(F,tune,st.key>0?key:null,{...opt,shape:1});
-  if(st.drift!=='off'&&st.key>0&&notes.length>=4){ const k2=Hum.driftKey(notes)||key; Hum.applyDrift(F,tune,Hum.followDrift(Hum.decode(F,tune,k2,{...opt,shape:1}),k2)); key=k2; notes=Hum.decode(F,tune,key,{...opt,shape:1}); }
+  if(st.drift!=='off'&&st.key>0&&notes.length>=4){ const k2=Hum.driftKey(notes)||key; Hum.applyDrift(F,tune,Hum.followDrift(Hum.decode(F,tune,k2,{...opt,shape:1}),k2)); key=Hum.recenter(tune,k2); notes=Hum.decode(F,tune,key,{...opt,shape:1}); }
   addVib(notes); st.chordOver={}; st.res={tune,key}; st.notes=notes; st.detected=notes.map(n=>({...n})); st.edited=false; st.sel=-1; st.tempo=Hum.tempo(notes); qSess=null; render();
 }
 
