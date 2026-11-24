@@ -81,6 +81,9 @@ canvas{display:block}
 .transport .status{font-variant-numeric:tabular-nums;min-width:5ch}
 #timing{margin:12px 0 0}.score{margin:10px 0 0;padding:12px 14px 6px;border:1px solid var(--line);border-radius:16px;background:var(--panel);overflow:hidden}
 .scoreHead{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin-bottom:4px}.scoreHead b{font-size:16px}
+.chOpts{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin:6px 0 4px;font-size:14px;font-weight:600;color:var(--mute)}
+.chOpts select{font:600 14px Inter,sans-serif;min-height:36px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:0 8px;margin-left:4px}
+.chShift{display:inline-flex;align-items:center;gap:6px}.chShift button{min-height:34px;padding:0 10px}.chOpts .hint{flex-basis:100%;font-weight:400;font-size:13px}
 #scClean[aria-pressed=true],#scChords[aria-pressed=true]{background:var(--selbg);color:var(--selink);border-color:var(--selbg)}
 .octBox{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);border-radius:12px;padding:2px}.octBox button{min-height:34px;padding:0 10px;border:0;background:transparent}.octBox span{font-size:13px;color:var(--mute);min-width:5.2em;text-align:center}
 #scoreSvg .chordSym{font:700 14px Inter,sans-serif;fill:var(--acc2);cursor:pointer}#scoreSvg .chordSym:hover{text-decoration:underline}#scoreSvg .chordSym.set{fill:var(--acc)}
@@ -329,7 +332,13 @@ button.q,label.q{background:transparent;border-color:transparent}button.q:hover,
 </details>
 
 <div class="score" id="score">
-  <div class="scoreHead"><b>Sheet music</b><button type="button" id="scorePlay" title="Plays the notes exactly as written, on the beat, on the piano">▶ Play as written</button><button type="button" id="scApply" class="q" hidden title="Makes the cleaned-up notes your notes (Undo goes back)">✓ Apply to my notes</button><button type="button" id="scClean" aria-pressed="false" title="Tidies timing, drops slips, snaps stray notes into the key — on the sheet music only">✨ Clean up</button><span class="octBox"><button type="button" id="scDn" title="Melody down an octave">▼</button><span id="scOctV">8va</span><button type="button" id="scUp" title="Melody up an octave (into the treble clef)">▲</button></span><button type="button" id="scChords" aria-pressed="false" title="Adds chords that fit the whole tune, in the bass clef">🎹 Chords</button><span class="status" id="scoreInfo"></span><details class="more"><summary class="q">More ▾</summary><div class="moreBody"><span class="status">Time</span><div class="seg" id="segTs"><button type="button" data-v="4">4/4</button><button type="button" data-v="3">3/4</button></div><button type="button" id="scMidi" class="q">⤓ Save sheet music as MIDI</button></div></details></div>
+  <div class="scoreHead"><b>Sheet music</b><button type="button" id="scorePlay" title="Plays the sheet music on the piano, on the beat">▶ Play</button><button type="button" id="scApply" class="q" hidden title="Makes the cleaned-up notes your notes (Undo goes back)">✓ Apply to my notes</button><button type="button" id="scClean" aria-pressed="false" title="Tidies timing, drops slips, snaps stray notes into the key — on the sheet music only">✨ Clean up</button><span class="octBox"><button type="button" id="scDn" title="Melody down an octave">▼</button><span id="scOctV">8va</span><button type="button" id="scUp" title="Melody up an octave (into the treble clef)">▲</button></span><button type="button" id="scChords" aria-pressed="false" title="Adds chords that fit the whole tune, in the bass clef">🎹 Chords</button><span class="status" id="scoreInfo"></span><details class="more"><summary class="q">More ▾</summary><div class="moreBody"><span class="status">Time</span><div class="seg" id="segTs"><button type="button" data-v="4">4/4</button><button type="button" data-v="3">3/4</button></div><button type="button" id="scMidi" class="q">⤓ Save sheet music as MIDI</button></div></details></div>
+  <div class="chOpts" id="chOpts" hidden>
+    <label>Style <select id="chStyle"><option value="held">Held chords</option><option value="oompah">Oom-pah (bass, chord)</option><option value="arp">Arpeggio (flowing)</option><option value="rhythm">Rhythm (bass + offbeats)</option></select></label>
+    <label>Changes <select id="chRate"><option value="auto">Auto</option><option value="bar">Every bar</option><option value="half">Twice a bar</option><option value="beat">Every beat</option></select></label>
+    <span class="chShift"><button type="button" id="chEarly" title="All chords one beat earlier">◀</button><span id="chShiftV">on the beat</span><button type="button" id="chLate" title="All chords one beat later">▶</button></span>
+    <span class="hint">Tap a chord name to hear others and pick one. With “Every beat”, pick a chord at any beat to change there.</span>
+  </div>
   <p class="status" id="scoreMsg"></p>
   <svg id="scoreSvg" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The notes as sheet music"></svg>
   <button type="button" class="q" id="scoreAll" hidden>Show all ▾</button>
@@ -1323,10 +1332,19 @@ $('chordPop').addEventListener('click',e=>{ const b=e.target.closest('button'); 
   if(b.dataset.select){ if(!chordPick) return; st.chordOver[u0]=chordPick; chordPick=null; } else if(b.dataset.auto) delete st.chordOver[u0]; else if(b.dataset.reset) st.chordOver={}; else return;
   $('chordPop').hidden=true; stopScore(); drawScore(); });
 document.addEventListener('pointerdown',e=>{ const P=$('chordPop'); if(!P.hidden&&!P.contains(e.target)&&!e.target.closest('[data-cu]')) P.hidden=true; });
-$('scClean').addEventListener('click',()=>{ st.scoreClean=!st.scoreClean; $('scClean').setAttribute('aria-pressed',st.scoreClean); $('scApply').hidden=!st.scoreClean; stopScore(); drawScore(); });
+{ const CK='hum2midi_chords'; try{ const o=JSON.parse(localStorage.getItem(CK)||'{}'); st.chStyle=o.style||'held'; st.chRate=o.rate||'auto'; st.chShift=0; }catch(e){}
+  const save=()=>{ try{ localStorage.setItem(CK,JSON.stringify({style:st.chStyle,rate:st.chRate})); }catch(e){} };
+  const shiftLbl=()=>{ const k=st.chShift||0; $('chShiftV').textContent=k?`${Math.abs(k)} beat${Math.abs(k)>1?'s':''} ${k>0?'later':'earlier'}`:'on the beat'; };
+  $('chStyle').value=st.chStyle; $('chRate').value=st.chRate; shiftLbl();
+  $('chStyle').addEventListener('change',()=>{ st.chStyle=$('chStyle').value; save(); stopScore(); drawScore(); });
+  $('chRate').addEventListener('change',()=>{ st.chRate=$('chRate').value; st.chordOver={}; save(); stopScore(); drawScore(); });
+  const sh=d=>{ const bpb=st.ts||4; st.chShift=Math.max(-(bpb-1),Math.min(bpb-1,(st.chShift||0)+d)); st.chordOver={}; shiftLbl(); stopScore(); drawScore(); };
+  $('chEarly').addEventListener('click',()=>sh(-1)); $('chLate').addEventListener('click',()=>sh(1)); }
+$('scClean').addEventListener('click',()=>{ st.scoreClean=!st.scoreClean; $('scClean').setAttribute('aria-pressed',st.scoreClean); $('scApply').hidden=!st.scoreClean; stopScore(); drawScore();
+  toast(st.scoreClean?'Cleaned up: press ▶ Play cleaned-up to hear it (your own notes are untouched)':'Back to your notes as sung'); });
 $('scApply').addEventListener('click',()=>{ const L=SC.last; if(!L||!L.cleanN) return; pushUndo();
   st.notes=L.cleanN.map(o=>({...o.n,pitch:o.p-st.tr,start:L.bar0+o.u0*L.unit,end:L.bar0+o.u1*L.unit,ed:1})).sort((a,b)=>a.start-b.start);
-  st.scoreClean=false; $('scClean').setAttribute('aria-pressed','false'); $('scApply').hidden=true; commit(); toast('The cleaned-up notes are now your notes — Undo goes back'); });
+  st.scoreClean=false; $('scClean').setAttribute('aria-pressed','false'); $('scApply').hidden=true; stopScore(); commit(); toast('The cleaned-up notes are now your notes — Undo goes back'); });
 $('scChords').addEventListener('click',()=>{ st.scoreChords=!st.scoreChords;
   if(st.scoreChords&&!(+st.scoreOct)&&st.notes.length){ const ps=st.notes.map(n=>n.pitch+st.tr).sort((a,b)=>a-b), md=ps[ps.length>>1]; if(md<62) st.scoreOct=Math.round((66-md)/12); } $('scChords').setAttribute('aria-pressed',st.scoreChords); stopScore(); drawScore(); });
 $('scUp').addEventListener('click',()=>{ st.scoreOct=Math.min(3,(+st.scoreOct||0)+1); stopScore(); drawScore(); });
@@ -1422,25 +1440,42 @@ function scoreChords(N,barLen){ const sc=scoreScale(); if(!sc||!N.length) return
   const end=Math.max(...N.map(o=>o.u1)), bars=Math.ceil(end/barLen), half=barLen/2;
   const fit=(c,a,b)=>{ let s=0; N.forEach(o=>{ const ov=Math.min(o.u1,b)-Math.max(o.u0,a); if(ov<=0) return; const strong=(o.u0%barLen===0||o.u0%barLen===half)&&o.u0>=a?1.5:1, pc=((o.p%12)+12)%12;
       s+=ov*strong*(c.pcs.includes(pc)?1:sc.pcs.includes(pc)?-0.35:-0.7); }); return s/Math.max(1,b-a)*4; };
-  const segs=[]; for(let b=0;b<bars;b++){ const a=b*barLen; const whole=C.map(c=>fit(c,a,a+barLen)), h1=C.map(c=>fit(c,a,a+half)), h2=C.map(c=>fit(c,a+half,a+barLen));
-    const bw=Math.max(...whole), bh=Math.max(...h1)+Math.max(...h2); if(bh/2>bw+1.2&&barLen%2===0) segs.push([a,a+half],[a+half,a+barLen]); else segs.push([a,a+barLen]); }
+  // where chords change: Auto (each bar, or each half bar when the tune clearly asks for it), or a fixed rate;
+  // then the whole grid can be shifted by whole beats (a tune that starts before beat 1)
+  const rate=st.chRate||'auto', shift=(st.chShift||0)*4; let segs=[];
+  for(let b=0;b<bars;b++){ const a=b*barLen;
+    if(rate==='bar') segs.push([a,a+barLen]); else if(rate==='half'&&barLen%2===0) segs.push([a,a+half],[a+half,a+barLen]);
+    else if(rate==='beat'){ for(let u=a;u<a+barLen;u+=4) segs.push([u,u+4]); }
+    else { const whole=C.map(c=>fit(c,a,a+barLen)), h1=C.map(c=>fit(c,a,a+half)), h2=C.map(c=>fit(c,a+half,a+barLen));
+      const bw=Math.max(...whole), bh=Math.max(...h1)+Math.max(...h2); if(bh/2>bw+1.2&&barLen%2===0) segs.push([a,a+half],[a+half,a+barLen]); else segs.push([a,a+barLen]); } }
+  if(shift){ const cuts=segs.map(x=>x[0]+shift).filter(u=>u>0&&u<end); segs=[0,...cuts].map((u,i,A)=>[u,i+1<A.length?A[i+1]:Math.max(end,u+4)]).filter(x=>x[1]>x[0]); }
   const move={I:{IV:.3,V:.3,vi:.2,ii:.2},IV:{V:.4,I:.25,ii:.15},V:{I:.6,vi:.2},vi:{IV:.3,ii:.3,V:.1},ii:{V:.45},iii:{vi:.3,IV:.2},i:{iv:.3,V:.3,VI:.2,VII:.2},iv:{V:.4,i:.25},VI:{iv:.2,VII:.3,III:.2},VII:{III:.3,i:.25},III:{VI:.3,iv:.2},'ii°':{V:.4}};
   // best path through the whole piece (Viterbi): fit to the tune + how chords like to move + start/end at home
   const forced=segs.map(([a])=>{ const o=(st.chordOver||{})[a]; if(!o) return -1; let k=C.findIndex(c=>c.label===o.label&&c.root===o.root); if(k<0){ C.push({nm:o.nm,label:o.label,root:o.root,pcs:o.pcs,prior:0,set:1}); k=C.length-1; } return k; });
   const lock=(i,j)=>forced[i]>=0&&forced[i]!==j?-1e6:0;
   let cost=C.map((c,j)=>fit(c,...segs[0])+c.prior+(j===0?.6:0)+lock(0,j)), back=[];
-  for(let i=1;i<segs.length;i++){ const nc=[], bk=[]; C.forEach((c,j)=>{ let bv=-1e9,bj=0; C.forEach((d,k)=>{ const v=cost[k]+((move[d.nm]||{})[c.nm]||0)+(k===j?-0.15:0); if(v>bv){bv=v;bj=k;} });
+  for(let i=1;i<segs.length;i++){ const nc=[], bk=[]; C.forEach((c,j)=>{ let bv=-1e9,bj=0; C.forEach((d,k)=>{ const v=cost[k]+((move[d.nm]||{})[c.nm]||0)+(k===j?(rate==='beat'?0.9:-0.15):0); if(v>bv){bv=v;bj=k;} });
       nc.push(bv+fit(c,...segs[i])+c.prior*0.5+(i===segs.length-1&&j===0?1.2:0)+(i===segs.length-2&&c.nm==='V'?0.3:0)+lock(i,j)); bk.push(bj); }); cost=nc; back.push(bk); }
   let j=cost.indexOf(Math.max(...cost)); const path=[j]; for(let i=back.length-1;i>=0;i--){ j=back[i][j]; path.unshift(j); }
   // voicing: root low in the bass, the chord close above it, each chord moving as little as possible from the last
   const notes=[], names=[]; let prev=null; const top=59;
+  { const ms=[], mp=[]; path.forEach((ci,i)=>{ const L=ms.length-1; if(L>=0&&mp[L]===ci&&forced[i]<0){ ms[L]=[ms[L][0],segs[i][1]]; return; } ms.push([...segs[i]]); mp.push(ci); }); segs=ms; path.splice(0,path.length,...mp); }
+  const style=st.chStyle||'held', beatsPerBar=barLen/4;
+  const play=(a,b,r,v)=>{ const P=(u0,u1,p,vel)=>{ if(u1>u0) notes.push({u0,u1,p,n:{vel},vib:false,chord:1}); };
+    if(style==='held'){ [r,...v].forEach(p=>P(a,b,p,52)); return; }
+    if(style==='arp'){ const seq=[r,v[0],v[1],v[2],v[1],v[0]]; let k=0; for(let u=a;u<b;u+=2,k++) P(u,Math.min(b,u+2),seq[k%seq.length],k%seq.length===0?58:48); return; }
+    if(style==='oompah'){ for(let u=a;u<b;u+=4){ const beat=Math.round((u%barLen)/4); if(beat===0||(beatsPerBar===4&&beat===2)) P(u,Math.min(b,u+4),beat===0?r:r+7>v[0]?r:r+7,58); else v.forEach(p=>P(u,Math.min(b,u+3),p,44)); } return; }
+    // rhythm: bass on the beat, chord on the "and" of 1, on 2-and-a-bit and on 4 (a light pop pattern)
+    for(let u=a;u<b;u+=4){ const beat=Math.round((u%barLen)/4); if(beat===0||beat===2) P(u,Math.min(b,u+3),r,58); }
+    for(let u=a;u<b;u+=2){ const e8=Math.round((u%barLen)/2); if([1,3,6].includes(e8%8)||(beatsPerBar===3&&[1,3,5].includes(e8))) v.forEach(p=>P(u,Math.min(b,u+2),p,46)); } };
   path.forEach((ci,i)=>{ const c=C[ci], [a,b]=segs[i]; let r=41+((c.root-41)%12+12)%12; names.push({u0:a,nm:c.nm,root:c.root,label:c.label,set:!!c.set});
     const cands=[]; for(let base=44;base<=56;base++){ const v=c.pcs.map(pc=>{ let x=base; while(((x%12)+12)%12!==pc) x++; return x; }).sort((x,y)=>x-y); if(v[2]<=top&&v[0]>r+2) cands.push(v); }
     const pick=cands.length?cands.reduce((A,B)=>{ const d=v=>prev?v.reduce((s,x,k)=>s+Math.abs(x-prev[k]),0):Math.abs(v[1]-52); return d(B)<d(A)?B:A; }):c.pcs.map(pc=>{ let x=r+1; while(((x%12)+12)%12!==pc) x++; return x; }).sort((x,y)=>x-y);
-    prev=pick; [r,...pick].forEach(p=>notes.push({u0:a,u1:b,p,n:{vel:52},vib:false,chord:1})); });
+    prev=pick; play(a,b,r,pick); });
   return {notes,names}; }
 var scorePb=null;
-function stopScore(){ if(scorePb){ scorePb.srcs.forEach(o=>{ try{ o.stop(); }catch(e){} }); clearTimeout(scorePb.to); scorePb=null; } $('scorePlay').textContent='▶ Play as written'; }
+const scorePlayLabel=()=>st.scoreClean?'▶ Play cleaned-up':'▶ Play';
+function stopScore(){ if(scorePb){ scorePb.srcs.forEach(o=>{ try{ o.stop(); }catch(e){} }); clearTimeout(scorePb.to); scorePb=null; } $('scorePlay').textContent=scorePlayLabel(); }
 async function playScore(){ if(scorePb){ stopScore(); return; } const L=SC.last; if(!L||!L.N.length) return; stopPlay(); const ctx=ac(); await loadPiano(); const t0=ctx.currentTime+0.12, srcs=[], keep=st.snd; st.snd='piano';
   const first=Math.floor(Math.min(...L.N.map(o=>o.u0))/4)*4;
   L.N.forEach(o=>{ const s0=(o.u0-first)*L.unit, d=(o.u1-o.u0)*L.unit, vc=o.vib?Float32Array.from(o.n.vib.curve,v=>v*100):null; tone(ctx,o.p,t0+s0,d,o.n.vel||90,ctx.destination,srcs,vc); }); st.snd=keep;
@@ -1455,7 +1490,7 @@ function drawScore(){
   if(st.scoreClean) N=cleanupScore(N,barLen);
   const cleanN=N;
   const OC=scoreOctave(N); N=OC.N; $('scOctV').textContent=OC.k?`${OC.k>0?'+':''}${OC.k} oct`:'as sung';
-  const CH=st.scoreChords?scoreChords(N,barLen):{notes:[],names:[]}; N=N.concat(CH.notes);
+  $('chOpts').hidden=!st.scoreChords; const CH=st.scoreChords?scoreChords(N,barLen):{notes:[],names:[]}; N=N.concat(CH.notes);
   SC.last={N,unit,barLen,CH,bar0,cleanN};
   const bars=Math.max(1,Math.ceil(Math.max(...N.map(n=>n.u1))/barLen));
   const k0=st.res&&st.res.key, fifths=keyFifths(k0?{tonic:((k0.tonic+st.tr)%12+12)%12,mode:k0.mode}:null), KA=keyAlts(fifths);
