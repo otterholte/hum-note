@@ -31,6 +31,8 @@ button:focus-visible,.file:focus-within,input:focus-visible,select:focus-visible
 .takebar b{color:var(--ink);font-weight:600}
 .hearL{display:inline-flex;gap:8px;align-items:center;min-height:44px;padding:0 14px;border:1px solid var(--line);border-radius:12px;background:var(--panel);font-weight:600;font-size:15px;cursor:pointer}
 .hearL input{width:20px;height:20px;margin:0}
+#midiIn{height:32px;max-width:220px;font:600 14px Inter,sans-serif;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);padding:0 6px}
+#midiDot{width:10px;height:10px;border-radius:50%;background:var(--line);transition:background .08s}#midiDot.on{background:var(--ok)}
 #metBpm{width:4.2em;height:32px;font:600 15px Inter,sans-serif;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);text-align:center}
 .micRow label{font-weight:600;font-size:15px}
 .micRow select{font:500 15px/1 Inter,sans-serif;min-height:44px;padding:0 12px;border-radius:12px;border:1px solid var(--line);background:var(--panel);color:var(--ink);max-width:100%;min-width:0;flex:0 1 340px}
@@ -151,6 +153,7 @@ canvas{display:block}
     <button id="recPause" type="button" hidden>❚❚ Pause</button>
     <button id="recCancel" type="button" hidden>✕ Cancel</button>
     <label class="hearL" id="metL" title="Plays a click in your headphones while you record; the take then uses this exact tempo"><input type="checkbox" id="metro"> Click <input type="number" id="metBpm" min="40" max="240" step="1" value="100" aria-label="Click tempo in BPM"> BPM</label>
+    <label class="hearL" id="midiL" title="Play your MIDI keyboard and hear it as a piano in your headphones">🎹 <select id="midiIn" aria-label="MIDI keyboard"><option value="">MIDI keyboard: off</option></select><i id="midiDot" aria-hidden="true"></i></label>
     <label class="hearL" id="hearL" hidden><input type="checkbox" id="hear"> Hear myself while recording <span class="status" id="hearS"></span></label>
     <button id="demo" type="button">Sample take</button>
     <span class="status" id="status"></span>
@@ -1255,6 +1258,34 @@ $('recPause').addEventListener('click',()=>{ if(!rec) return; const r=rec; r.pau
   if(r.paused){ r.acc+=performance.now()-r.since; $('recPause').textContent='▶ Resume'; $('status').textContent='Paused — Resume to keep going, Stop to save, Cancel to throw it away.'; $('lvl').style.width='0%'; }
   else { r.since=performance.now(); $('recPause').textContent='❚❚ Pause'; $('status').textContent=r.replace?`Recording over ${r.replace.base} — Stop replaces it, Cancel keeps the original.`:'Recording — sing, then press Stop.'; } });
 $('recCancel').addEventListener('click',()=>{ if(rec) stopRec(true); });
+
+// ---- MIDI keyboard: pick it from the list, hear it as a piano (any time — also while recording)
+const MIDI_KEY='hum2midi_midiIn'; let MA=null, midiWant=''; try{ midiWant=localStorage.getItem(MIDI_KEY)||''; }catch(e){}
+let pMaster=null; const pVoices=new Map(); let sustain=false; const held=new Set();
+function pianoOut(){ const ctx=ac(); if(!pMaster){ const comp=ctx.createDynamicsCompressor(); comp.threshold.value=-14; comp.ratio.value=4; pMaster=ctx.createGain(); pMaster.gain.value=0.9; pMaster.connect(comp); comp.connect(ctx.destination); } return pMaster; }
+let noiseBuf=null; function noise(ctx){ if(!noiseBuf){ noiseBuf=ctx.createBuffer(1,Math.round(ctx.sampleRate*0.03),ctx.sampleRate); const d=noiseBuf.getChannelData(0); for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*Math.exp(-i/(d.length/5)); } return noiseBuf; }
+function pianoOn(p,vel){ const ctx=ac(); if(ctx.state!=='running') ctx.resume(); pianoOff(p,true);
+  const f=440*2**((p-69)/12), t=ctx.currentTime+0.005, v=0.22*(vel/127)**1.4, out=ctx.createGain(), lp=ctx.createBiquadFilter();
+  lp.type='lowpass'; lp.frequency.value=Math.min(16000,1200+9000*(vel/127)**1.5+f*2); out.connect(lp); lp.connect(pianoOut());
+  const tau=Math.max(0.5,Math.min(7,3.6*Math.sqrt(261.6/f))), oscs=[];
+  for(let k=1;k<=12&&k*f<9000;k++){ const o=ctx.createOscillator(), g=ctx.createGain(); o.frequency.value=f*k*Math.sqrt(1+0.0004*k*k); if(k===1) o.detune.value=0.6; const a=v*(k===1?1:k===2?0.55:0.8/Math.pow(k,1.3));
+    g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(a,t+0.003); g.gain.setTargetAtTime(0,t+0.003,tau/(1+0.55*(k-1))); o.connect(g); g.connect(out); o.start(t); oscs.push(o); }
+  const nz=ctx.createBufferSource(), bp=ctx.createBiquadFilter(), ng=ctx.createGain(); nz.buffer=noise(ctx); bp.type='bandpass'; bp.frequency.value=Math.min(6000,f*6); bp.Q.value=0.8; ng.gain.value=v*0.6; nz.connect(bp); bp.connect(ng); ng.connect(out); nz.start(t);
+  out.gain.value=1; pVoices.set(p,{out,oscs}); held.add(p); $('midiDot').classList.add('on'); }
+function pianoOff(p,now){ const V=pVoices.get(p); held.delete(p); if(!held.size) $('midiDot').classList.remove('on'); if(!V) return; if(sustain&&!now){ V.sus=true; return; }
+  const ctx=ac(), t=ctx.currentTime; V.out.gain.setTargetAtTime(0,t,now?0.015:0.09); V.oscs.forEach(o=>{ try{ o.stop(t+0.7); }catch(e){} }); pVoices.delete(p); }
+function onMidi(e){ const [s0,d1,d2]=e.data, cmd=s0&0xF0;
+  if(cmd===0x90&&d2>0) pianoOn(d1,d2); else if(cmd===0x80||(cmd===0x90&&d2===0)) pianoOff(d1);
+  else if(cmd===0xB0&&d1===64){ sustain=d2>=64; if(!sustain) [...pVoices.entries()].forEach(([p,V])=>{ if(V.sus&&!held.has(p)) pianoOff(p,false); }); } }
+function midiList(){ if(!MA) return; const sel=$('midiIn'), ins=[...MA.inputs.values()];
+  sel.innerHTML='<option value="">MIDI keyboard: off</option>'+(ins.length>1?'<option value="*">All keyboards</option>':'')+ins.map(i=>`<option value="${esc(i.name)}">${esc(i.name)}</option>`).join('')+(ins.length?'':'<option value="" disabled>No keyboards found — plug one in</option>');
+  sel.value=[...sel.options].some(o=>o.value===midiWant)?midiWant:''; ins.forEach(i=>{ i.onmidimessage=(midiWant==='*'||midiWant===i.name)?onMidi:null; }); }
+async function midiInit(ask){ if(MA) return true; if(!navigator.requestMIDIAccess){ if(ask) toast('This browser has no MIDI support — use Chrome or Edge'); return false; }
+  try{ MA=await navigator.requestMIDIAccess(); MA.onstatechange=midiList; midiList(); return true; }catch(e){ if(ask) toast('MIDI was blocked — allow it when asked'); return false; } }
+$('midiIn').addEventListener('pointerdown',()=>midiInit(true)); $('midiIn').addEventListener('focus',()=>midiInit(true));
+$('midiIn').addEventListener('change',()=>{ midiWant=$('midiIn').value; try{ localStorage.setItem(MIDI_KEY,midiWant); }catch(e){} midiList(); if(midiWant) toast(midiWant==='*'?'Listening to all MIDI keyboards':`Listening to ${midiWant}`); });
+// pick the only keyboard automatically if none was chosen yet
+midiInit(false).then(ok=>{ if(!ok||!MA) return; const ins=[...MA.inputs.values()]; if(!midiWant&&ins.length===1&&localStorage.getItem(MIDI_KEY)==null){ midiWant=ins[0].name; midiList(); } });
 // ---- metronome: a click on every beat (accent on beat 1), scheduled ahead on the audio clock
 const MET_KEY='hum2midi_met'; try{ const m=JSON.parse(localStorage.getItem(MET_KEY)||'{}'); if(m.on) $('metro').checked=true; if(m.bpm) $('metBpm').value=m.bpm; }catch(e){}
 const saveMet=()=>{ try{ localStorage.setItem(MET_KEY,JSON.stringify({on:$('metro').checked,bpm:+$('metBpm').value})); }catch(e){} };
