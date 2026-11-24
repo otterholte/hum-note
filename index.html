@@ -182,7 +182,7 @@ button.q,label.q{background:transparent;border-color:transparent}button.q:hover,
     <div><h1>Humnote</h1><span class="tag">Hum it. See the notes. Keep the MIDI.</span></div>
   </div>
   <div class="topR">
-    <button type="button" class="q" id="themeB" title="Light / dark">◐ Auto</button>
+    <button type="button" class="q" id="themeB" title="Light / dark">☀ Light</button>
     <details class="menu" id="setup"><summary class="q">⚙ Setup</summary>
       <div class="menuBody">
         <div class="mrow micRow"><label for="mic">Microphone</label><select id="mic"><option value="">Windows default</option></select><div class="meter" title="Live input level — it should jump when you sing"><i id="micLvl"></i></div><span class="status" id="micS"></span></div>
@@ -830,14 +830,18 @@ function draw(){
   c.font='500 11px Inter,sans-serif'; c.textBaseline='middle';
   const step=[0.5,1,2,5,10,15,30,60].find(v=>v*NOTE_W>=64)||60, minor=step/(step>=5?5:2);
   for(let k=0;k*minor<G.dur;k++){ const s=k*minor, X=Math.round(s*NOTE_W), major=Math.abs(s/step-Math.round(s/step))<1e-6;
-    c.fillStyle=major?c0.mute:c0.line; c.fillRect(X,major?RULER-10:RULER-5,1,major?10:5);
-    if(major){ const m=Math.floor(s/60), sec=s%60; c.fillText(m?`${m}:${String(Math.round(sec*10)/10).padStart(2,'0')}`:`${s}s`,X+4,RULER/2-1); } }
+    c.fillStyle=major?c0.mute:c0.line; c.fillRect(X,major?RULER-(st.tempo?6:10):RULER-(st.tempo?3:5),1,major?(st.tempo?6:10):(st.tempo?3:5));
+    if(major){ const m=Math.floor(s/60), sec=s%60; c.save(); if(st.tempo){ c.font='500 9px Inter,sans-serif'; c.globalAlpha=0.6; } c.fillText(m?`${m}:${String(Math.round(sec*10)/10).padStart(2,'0')}`:`${s}s`,X+3,st.tempo?RULER-7:RULER/2-1); c.restore(); } }
+  // bar numbers (with a tempo): the main thing to read on the timeline
+  if(st.tempo){ const T=st.tempo, bw=T.beat*4*NOTE_W, every=bw>=34?1:bw>=17?2:bw>=8?4:8; c.save(); c.font='700 12px Inter,sans-serif'; c.fillStyle=c0.ink;
+    for(let b=Math.ceil(-T.phase/T.beat);T.phase+b*T.beat<G.dur;b++){ if(((b%4)+4)%4) continue; const bar=Math.floor(b/4)+1; if((bar-1)%every) continue; const X=(T.phase+b*T.beat)*NOTE_W; if(X<0) continue; c.fillRect(Math.round(X),0,2,RULER); c.fillText(String(bar),X+5,8); }
+    c.restore(); }
   // beat grid (bars darker) when a tempo is known
   if(st.tempo){ const T=st.tempo, bar=T.beat*4; for(let b=Math.ceil(-T.phase/T.beat);T.phase+b*T.beat<G.dur;b++){ const X=(T.phase+b*T.beat)*NOTE_W; if(X<0) continue; const isBar=((b%4)+4)%4===0;
       c.fillStyle=isBar?c0.mute:c0.line; c.globalAlpha=isBar?0.55:0.9; c.fillRect(Math.round(X),RULER,isBar?2:1,H-RULER); c.globalAlpha=1;
       if(isBar){ c.fillStyle=c0.acc2; c.fillRect(Math.round(X),RULER-4,2,4); } } }
   // notes
-  st.notes.forEach((n,i)=>{ const x0=n.start*NOTE_W, w=Math.max(4,(n.end-n.start)*NOTE_W), y0=Y(n.pitch)+1, h=rowH-2, sel=i===st.sel;
+  st.notes.forEach((n,i)=>{ const x0=n.start*NOTE_W, w=Math.max(4,(n.end-n.start)*NOTE_W), y0=Y(n.pitch)+1, h=rowH-2, sel=i===st.sel||selSet.has(n);
     c.fillStyle=sel?c0.ink:(inKey.size&&!inKey.has(n.pitch%12)?c0.acc2:c0.acc);
     c.beginPath(); c.roundRect?c.roundRect(x0,y0,w,h,4):c.rect(x0,y0,w,h); c.fill();
     if(sel){ c.fillStyle=c0.acc2; c.fillRect(x0,y0,3,h); c.fillRect(x0+w-3,y0,3,h); }
@@ -926,14 +930,21 @@ function playOne(i){ const n=st.notes[i]; if(!n||pb) return; previews.forEach(o=
 // ---- editing
 const undo=[];
 function pushUndo(){ undo.push({notes:st.notes.map(n=>({...n})),edited:st.edited,sel:st.sel}); if(undo.length>80) undo.shift(); $('undoB').hidden=false; }
-function doUndo(){ const u=undo.pop(); if(!u) return; qSess=null; st.notes=u.notes; st.edited=u.edited; st.sel=u.sel;
+function doUndo(){ const u=undo.pop(); if(!u) return; qSess=null; selSet=new Set(); st.notes=u.notes; st.edited=u.edited; st.sel=u.sel;
   if(u.audio){ stopPlay(); Object.assign(st,u.audio); saveAudio(); } render(); resaveSoon(); }
 function commit(){ st.ver++; const sel=st.notes[st.sel]; st.notes.sort((a,b)=>a.start-b.start); st.sel=sel?st.notes.indexOf(sel):-1; st.edited=true; render(); resaveSoon(); }
 function select(i){ st.sel=i; document.querySelectorAll('#notes button').forEach(b=>b.classList.toggle('sel',+b.dataset.i===i)); draw(); }
 function hit(e){ const r=$('cv').getBoundingClientRect(), x=e.clientX-r.left, y=e.clientY-r.top; return {x,y,t:x/NOTE_W,p:G.hi-Math.floor((y-RULER)/G.rowH)}; }
 function noteAt(h){ if(h.y<RULER) return {i:-1}; for(let i=st.notes.length-1;i>=0;i--){ const n=st.notes[i]; if(n.pitch!==h.p) continue; const x0=n.start*NOTE_W, x1=Math.max(x0+4,n.end*NOTE_W);
     if(h.x>=x0-4&&h.x<=x1+4){ const edge=x1-x0>=18?6:3; return {i,part:h.x<=x0+edge?'start':h.x>=x1-edge?'end':'body'}; } } return {i:-1}; }
-let drag=null; const SNAP_PX=10;
+let drag=null; const SNAP_PX=10; let selSet=new Set();
+function selectRange(a,b){ selSet=new Set(st.notes.filter(n=>{ const m=(n.start+n.end)/2; return m>=a&&m<=b; })); draw(); }
+function clearSel(){ if(selSet.size){ selSet=new Set(); draw(); } }
+// while dragging near the left/right edge, the view slides that way (slowly, faster the closer you get)
+function autoScroll(){ if(!drag||drag.cx==null) return; const sc=$('sc'), r=sc.getBoundingClientRect(), edge=60; let v=0;
+  if(drag.cx<r.left+edge) v=-(r.left+edge-drag.cx); else if(drag.cx>r.right-edge) v=drag.cx-(r.right-edge);
+  if(v){ const before=sc.scrollLeft; sc.scrollLeft+=Math.max(-40,Math.min(40,v))*0.1; if(sc.scrollLeft!==before) dragMove({clientX:drag.cx,clientY:drag.cy,shiftKey:drag.shift,altKey:false,ctrlKey:false,metaKey:false}); }
+  drag.raf=requestAnimationFrame(autoScroll); }
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const free=e=>!!(e&&(e.altKey||e.ctrlKey||e.metaKey)); // hold Alt or Ctrl to place freely, no snapping
 // pull a time onto the nearest start/end of another note, if it is within a few pixels
@@ -946,11 +957,21 @@ function joined(n,side){ const edge=side==='start'?n.start:n.end; let best=null,
   return best; }
 const cv=$('cv');
 cv.addEventListener('pointerdown',e=>{ if(!G||e.button!==0) return; const h=hit(e), on=noteAt(h); cv.setPointerCapture(e.pointerId);
-  if(on.i>=0){ select(on.i); const n=st.notes[on.i], cp=e.shiftKey; drag={mode:cp?'body':on.part,n,h0:h,orig:{...n},link:cp||on.part==='body'?null:joined(n,on.part),moved:false,copy:cp}; }
-  else drag={mode:'time',h0:h,moved:false}; });
-cv.addEventListener('pointermove',e=>{ if(!G) return; const h=hit(e);
+  if(on.i>=0&&selSet.size>1&&selSet.has(st.notes[on.i])&&(on.part==='body'||e.shiftKey)){ const g=[...selSet]; drag={mode:'group',h0:h,g,origs:g.map(n=>({n,s:n.start,e:n.end,p:n.pitch})),loop0:st.loop?[...st.loop]:null,moved:false,copy:e.shiftKey}; }
+  else if(on.i>=0){ if(!selSet.has(st.notes[on.i])) clearSel(); select(on.i); const n=st.notes[on.i], cp=e.shiftKey; drag={mode:cp?'body':on.part,n,h0:h,orig:{...n},link:cp||on.part==='body'?null:joined(n,on.part),moved:false,copy:cp}; }
+  else drag={mode:'time',h0:h,moved:false};
+  drag.cx=e.clientX; drag.cy=e.clientY; drag.shift=e.shiftKey; drag.raf=requestAnimationFrame(autoScroll); });
+cv.addEventListener('pointermove',e=>{ if(drag){ drag.cx=e.clientX; drag.cy=e.clientY; drag.shift=e.shiftKey; } dragMove(e); });
+function dragMove(e){ if(!G) return; const h=hit(e);
   if(!drag){ const on=noteAt(h); cv.style.cursor=on.i<0?(h.y<RULER?'col-resize':'crosshair'):e.shiftKey?'copy':on.part==='body'?'move':'ew-resize'; return; }
-  if(drag.mode==='time'){ if(Math.abs(h.x-drag.h0.x)<6&&!drag.moved) return; drag.moved=true; const a=Math.max(0,Math.min(drag.h0.t,h.t)), b=Math.min(G.dur,Math.max(drag.h0.t,h.t)); st.loop=[a,b]; showLoop(); return; }
+  if(drag.mode==='time'){ if(Math.abs(h.x-drag.h0.x)<6&&!drag.moved) return; drag.moved=true; const a=Math.max(0,Math.min(drag.h0.t,h.t)), b=Math.min(G.dur,Math.max(drag.h0.t,h.t)); st.loop=[a,b]; showLoop(); selectRange(a,b); return; }
+  if(drag.mode==='group'){ if(!drag.moved&&Math.hypot(h.x-drag.h0.x,h.y-drag.h0.y)<4) return;
+    if(!drag.moved){ pushUndo(); drag.moved=true; if(drag.copy){ const cl=drag.origs.map(o=>{ const c=cloneNote(o.n); st.notes.push(c); return {...o,n:c}; }); drag.origs=cl; selSet=new Set(cl.map(o=>o.n)); } }
+    const s0=Math.min(...drag.origs.map(o=>o.s)), e0=Math.max(...drag.origs.map(o=>o.e)); let dt=(h.x-drag.h0.x)/NOTE_W; const dp=Math.round((drag.h0.y-h.y)/G.rowH);
+    const sn=snapT(s0+dt,new Set(drag.origs.map(o=>o.n)),e); let guide=null; if(sn.g!=null){ dt=sn.t-s0; guide=sn.g; } dt=clamp(dt,-s0,Math.max(-s0,G.dur-e0));
+    drag.origs.forEach(o=>{ o.n.start=o.s+dt; o.n.end=o.e+dt; o.n.pitch=clamp(o.p+dp,0,127); o.n.ed=1; });
+    if(drag.loop0){ st.loop=[drag.loop0[0]+dt,drag.loop0[1]+dt]; showLoop(); }
+    if(dp!==drag.dp){ drag.dp=dp; playOne(st.notes.indexOf(drag.origs[0].n)); } st.guide=guide; draw(); return; }
   if(!drag.moved&&Math.hypot(h.x-drag.h0.x,h.y-drag.h0.y)<4) return;
   if(!drag.moved){ pushUndo(); drag.moved=true; if(drag.copy){ const c=cloneNote(drag.orig); st.notes.push(c); drag.n=c; st.sel=st.notes.length-1; } }
   const n=drag.n, o=drag.orig, L=drag.link, skip=new Set([n]); if(L) skip.add(L); let guide=null;
@@ -965,11 +986,12 @@ cv.addEventListener('pointermove',e=>{ if(!G) return; const h=hit(e);
     if(drag.mode==='start'){ t=Math.min(t,n.end-0.04); if(L) t=Math.max(t,L.start+0.04); n.start=t; if(L){ L.end=t; L.ed=1; } }
     else { t=Math.max(t,n.start+0.04); if(L) t=Math.min(t,L.end-0.04); n.end=t; if(L){ L.start=t; L.ed=1; } }
   }
-  n.ed=1; st.guide=guide; draw(); });
-cv.addEventListener('pointerup',e=>{ const d=drag; drag=null; st.guide=null; if(!d||!G) return;
-  if(d.mode==='time'){ if(!d.moved){ seek(d.h0.t); } else { if(st.loop[1]-st.loop[0]<0.08){ st.loop=null; showLoop(); seek(d.h0.t); } else { setPos(st.loop[0]); if(pb) startPlay(st.loop[0]); } } return; }
+  n.ed=1; st.guide=guide; draw(); }
+cv.addEventListener('pointerup',e=>{ const d=drag; drag=null; st.guide=null; if(d) cancelAnimationFrame(d.raf); if(!d||!G) return;
+  if(d.mode==='group'){ if(d.moved) commit(); return; }
+  if(d.mode==='time'){ if(!d.moved){ clearSel(); seek(d.h0.t); } else { if(st.loop[1]-st.loop[0]<0.08){ st.loop=null; showLoop(); clearSel(); seek(d.h0.t); } else { setPos(st.loop[0]); if(pb) startPlay(st.loop[0]); } } return; }
   if(d.moved) commit(); else playOne(st.notes.indexOf(d.n)); });
-cv.addEventListener('pointercancel',()=>{ drag=null; st.guide=null; draw(); });
+cv.addEventListener('pointercancel',()=>{ if(drag) cancelAnimationFrame(drag.raf); drag=null; st.guide=null; draw(); });
 // double-click empty space: add a note; if another note is sounding at that moment, line up with it (harmony)
 cv.addEventListener('dblclick',e=>{ if(!G) return; const h=hit(e); if(h.y<RULER||noteAt(h).i>=0) return; pushUndo();
   let s,en; const over=st.notes.filter(o=>h.t>=o.start&&h.t<o.end).sort((a,b)=>Math.abs(a.pitch-h.p)-Math.abs(b.pitch-h.p));
@@ -987,11 +1009,16 @@ $('roll').addEventListener('wheel',e=>{ if(!(e.altKey||e.ctrlKey||e.metaKey)) re
 document.addEventListener('keydown',e=>{
   const tag=(e.target.tagName||'').toLowerCase(); if(tag==='input'||tag==='textarea'||tag==='select') return;
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){ e.preventDefault(); doUndo(); return; }
-  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='c'&&st.notes[st.sel]){ if(getSelection().toString()) return; clip=cloneNote(st.notes[st.sel]); toast('Note copied — Ctrl+V drops it at the playhead'); return; }
-  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='v'&&clip){ e.preventDefault(); pushUndo(); const d=clip.end-clip.start, t=Math.max(0,nowPos()); const c=cloneNote(clip); c.start=t; c.end=t+d; st.notes.push(c); st.sel=st.notes.length-1; commit(); playOne(st.sel); scrollToNote(st.sel); return; }
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='c'&&st.notes[st.sel]){ if(getSelection().toString()) return; const c=cloneNote(st.notes[st.sel]); c.end-=c.start; c.start=0; clip=[c]; toast('Note copied — Ctrl+V drops it at the playhead'); return; }
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='v'&&clip&&clip.length){ e.preventDefault(); pushUndo(); const t=Math.max(0,nowPos()); const added=clip.map(n=>{ const c=cloneNote(n); c.start+=t; c.end+=t; st.notes.push(c); return c; }); selSet=new Set(added.length>1?added:[]); st.sel=st.notes.indexOf(added[0]); commit(); playOne(st.sel); scrollToNote(st.sel); return; }
   if(e.key===' '){ e.preventDefault(); togglePlay(); return; }
   if(e.key==='='||e.key==='+'){ zoom(1.25); return; } if(e.key==='-'||e.key==='_'){ zoom(0.8); return; }
-  if(e.key==='Escape'){ if(st.loop){ st.loop=null; showLoop(); } else select(-1); return; }
+  if(e.key==='Escape'){ if(st.loop){ st.loop=null; showLoop(); clearSel(); } else select(-1); return; }
+  if(selSet.size>1){ const G2=[...selSet];
+    if((e.key==='Delete'||e.key==='Backspace')&&e.shiftKey&&st.loop&&st.buf&&!st.demo){ e.preventDefault(); cutRange(st.loop[0],st.loop[1]); selSet=new Set(); return; }
+    if(e.key==='Delete'||e.key==='Backspace'){ e.preventDefault(); pushUndo(); st.notes=st.notes.filter(n=>!selSet.has(n)); selSet=new Set(); st.sel=-1; commit(); toast(`Deleted ${G2.length} notes`); return; }
+    if(e.key==='ArrowUp'||e.key==='ArrowDown'){ e.preventDefault(); pushUndo(); const d=(e.key==='ArrowUp'?1:-1)*(e.shiftKey?12:1); G2.forEach(n=>{ n.pitch=clamp(n.pitch+d,0,127); n.ed=1; }); commit(); return; }
+    if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='c'){ const s0=Math.min(...G2.map(n=>n.start)); clip=G2.map(n=>{ const c=cloneNote(n); c.start-=s0; c.end-=s0; return c; }); toast(`${G2.length} notes copied — Ctrl+V drops them at the playhead`); return; } }
   const n=st.notes[st.sel]; if(!n) return;
   if((e.key==='Delete'||e.key==='Backspace')&&e.shiftKey&&st.buf&&!st.demo){ e.preventDefault(); cutRange(n.start,n.end); }
   else if(e.key==='Delete'||e.key==='Backspace'){ e.preventDefault(); pushUndo(); st.notes.splice(st.sel,1); st.sel=-1; commit(); }
@@ -1034,7 +1061,7 @@ $('demo').addEventListener('click',()=>{ curName=null; curFile=null; showTakeBar
 setTimeout(()=>loadPiano().catch(()=>{}),1500); });
 $('play').addEventListener('click',togglePlay);
 $('play').addEventListener('keydown',e=>{ if(e.key===' ') e.preventDefault(); });
-$('loopClr').addEventListener('click',()=>{ st.loop=null; showLoop(); });
+$('loopClr').addEventListener('click',()=>{ st.loop=null; showLoop(); clearSel(); });
 // ---- cut a stretch of time out of the take: the sound AND the notes go, and everything after slides earlier
 function cutRange(a,b){ if(!st.buf||st.demo||!(b>a)) return; stopPlay(); const d=b-a;
   undo.push({notes:st.notes.map(n=>({...n})),edited:st.edited,sel:st.sel,audio:{buf:st.buf,F:st.F,res:st.res,tempo:st.tempo,pos:st.pos}}); if(undo.length>80) undo.shift();
@@ -1090,7 +1117,8 @@ seg('segSmooth','smooth'); seg('segTrace','trace',tKey); tKey();
 seg('segTs','ts',()=>drawScore());
 $('scoreAll').addEventListener('click',()=>{ SC.all=!SC.all; drawScore(); });
 $('scClean').addEventListener('click',()=>{ st.scoreClean=!st.scoreClean; $('scClean').setAttribute('aria-pressed',st.scoreClean); stopScore(); drawScore(); });
-$('scChords').addEventListener('click',()=>{ st.scoreChords=!st.scoreChords; $('scChords').setAttribute('aria-pressed',st.scoreChords); stopScore(); drawScore(); });
+$('scChords').addEventListener('click',()=>{ st.scoreChords=!st.scoreChords;
+  if(st.scoreChords&&!(+st.scoreOct)&&st.notes.length){ const ps=st.notes.map(n=>n.pitch+st.tr).sort((a,b)=>a-b), md=ps[ps.length>>1]; if(md<64) st.scoreOct=Math.round((71-md)/12); } $('scChords').setAttribute('aria-pressed',st.scoreChords); stopScore(); drawScore(); });
 $('scUp').addEventListener('click',()=>{ st.scoreOct=Math.min(3,(+st.scoreOct||0)+1); stopScore(); drawScore(); });
 $('scDn').addEventListener('click',()=>{ st.scoreOct=Math.max(-3,(+st.scoreOct||0)-1); stopScore(); drawScore(); });
 $('scMidi').addEventListener('click',async()=>{ const L=SC.last; if(!L||!L.N.length){ toast('No sheet music yet'); return; } const T=st.tempo;
@@ -1170,10 +1198,10 @@ function scoreChords(N,barLen){ const sc=scoreScale(); if(!sc||!N.length) return
       nc.push(bv+fit(c,...segs[i])+c.prior*0.5+(i===segs.length-1&&j===0?1.2:0)+(i===segs.length-2&&c.nm==='V'?0.3:0)); bk.push(bj); }); cost=nc; back.push(bk); }
   let j=cost.indexOf(Math.max(...cost)); const path=[j]; for(let i=back.length-1;i>=0;i--){ j=back[i][j]; path.unshift(j); }
   // voicing: root low in the bass, the chord close above it, each chord moving as little as possible from the last
-  const notes=[], names=[]; let prev=null; const mel=N.length?Math.min(...N.map(o=>o.p)):60, top=Math.min(60,mel-3);
-  path.forEach((ci,i)=>{ const c=C[ci], [a,b]=segs[i]; let r=36+((c.root-36)%12+12)%12; if(r>43) r-=12; names.push({u0:a,nm:c.nm,root:c.root});
+  const notes=[], names=[]; let prev=null; const top=59;
+  path.forEach((ci,i)=>{ const c=C[ci], [a,b]=segs[i]; let r=41+((c.root-41)%12+12)%12; names.push({u0:a,nm:c.nm,root:c.root});
     const cands=[]; for(let base=44;base<=56;base++){ const v=c.pcs.map(pc=>{ let x=base; while(((x%12)+12)%12!==pc) x++; return x; }).sort((x,y)=>x-y); if(v[2]<=top&&v[0]>r+2) cands.push(v); }
-    const pick=cands.length?cands.reduce((A,B)=>{ const d=v=>prev?v.reduce((s,x,k)=>s+Math.abs(x-prev[k]),0):Math.abs(v[1]-52); return d(B)<d(A)?B:A; }):[r+12,r+16,r+19];
+    const pick=cands.length?cands.reduce((A,B)=>{ const d=v=>prev?v.reduce((s,x,k)=>s+Math.abs(x-prev[k]),0):Math.abs(v[1]-52); return d(B)<d(A)?B:A; }):c.pcs.map(pc=>{ let x=r+1; while(((x%12)+12)%12!==pc) x++; return x; }).sort((x,y)=>x-y);
     prev=pick; [r,...pick].forEach(p=>notes.push({u0:a,u1:b,p,n:{vel:52},vib:false,chord:1})); });
   return {notes,names}; }
 var scorePb=null;
@@ -1195,7 +1223,8 @@ function drawScore(){
   SC.last={N,unit,barLen,CH};
   const bars=Math.max(1,Math.ceil(Math.max(...N.map(n=>n.u1))/barLen));
   const k0=st.res&&st.res.key, fifths=keyFifths(k0?{tonic:((k0.tonic+st.tr)%12+12)%12,mode:k0.mode}:null), KA=keyAlts(fifths);
-  const staffs=[{clef:'G',ev:staffEvents(N.filter(n=>n.p>=60),bars,barLen),bottom:30,mid:34},{clef:'F',ev:staffEvents(N.filter(n=>n.p<60),bars,barLen),bottom:18,mid:22}];
+  const isTreble=n=>st.scoreChords?!n.chord:n.p>=60;
+  const staffs=[{clef:'G',ev:staffEvents(N.filter(isTreble),bars,barLen),bottom:30,mid:34},{clef:'F',ev:staffEvents(N.filter(n=>!isTreble(n)),bars,barLen),bottom:18,mid:22}];
   // layout: bar widths from their contents, then fill lines
   const sp=SC.sp, W=Math.max(320,box.clientWidth-2), left=12, keyW=Math.abs(fifths)*9, headW=46+keyW, tsW=28;
   const posX=[]; const barW=[];
@@ -1206,14 +1235,14 @@ function drawScore(){
     if(cur.length&&used+barW[b]>avail){ lines.push(cur); cur=[]; used=0; } cur.push(b); used+=barW[b]+extra*0; }
   if(cur.length) lines.push(cur);
   const allLines=lines.length; $('scoreAll').hidden=allLines<2; $('scoreAll').textContent=SC.all?'Show less ▴':`Show all ${allLines} lines ▾`; if(!SC.all) lines=lines.slice(0,1);
-  const staffGap=11*sp, sysH=4*sp+staffGap+4*sp, sysGap=9*sp; let out=''; const H=lines.length*(sysH+sysGap)+2*sp;
+  const staffGap=11*sp, sysH=4*sp+staffGap+4*sp, sysGap=11*sp, head0=st.scoreChords?6*sp:3*sp; let out=''; const H=head0+lines.length*(sysH+sysGap);
   const ys=(S,step,top)=>top+(S.clef==='G'?0:4*sp+staffGap)+4*sp-(step-S.bottom)*sp/2;
   const txt=(x,y,t,size,extra='')=>`<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-size="${size}" ${extra}>${t}</text>`;
   const accG=(x,y,a)=>a===-1?`<path class="tie" style="stroke-width:1.5" d="M${x-2} ${y-13} V${y+4} C${x+5} ${y-1} ${x+5} ${y-6} ${x-2} ${y-2}"/>`
     :a===1?`<path class="stem" style="stroke-width:1.2" d="M${x-2.5} ${y-9} V${y+10} M${x+2.5} ${y-10} V${y+9}"/><path class="stem" style="stroke-width:2.6" d="M${x-5} ${y-2} L${x+5} ${y-4.5} M${x-5} ${y+4.5} L${x+5} ${y+2}"/>`
     :`<path class="stem" style="stroke-width:1.2" d="M${x-2.5} ${y-10} V${y+4} M${x+2.5} ${y-4} V${y+10}"/><path class="stem" style="stroke-width:2.4" d="M${x-2.5} ${y-1.5} L${x+2.5} ${y-3.5} M${x-2.5} ${y+4} L${x+2.5} ${y+2}"/>`;
   lines.forEach((ln,li)=>{
-    const top=sp*3+li*(sysH+sysGap), x0=left, totalW=ln.reduce((s,b)=>s+barW[b],0), head=headW+(li===0?tsW:0), scale=li===lines.length-1?Math.min(1.35,(W-x0-head-4)/totalW):(W-x0-head-4)/totalW;
+    const top=head0+li*(sysH+sysGap), x0=left, totalW=ln.reduce((s,b)=>s+barW[b],0), head=headW+(li===0?tsW:0), scale=li===lines.length-1?Math.min(1.35,(W-x0-head-4)/totalW):(W-x0-head-4)/totalW;
     staffs.forEach(S=>{ const y0=ys(S,S.bottom+8,top); for(let k=0;k<5;k++) out+=`<line class="sl" x1="${x0}" x2="${(x0+head+totalW*scale).toFixed(1)}" y1="${y0+k*sp}" y2="${y0+k*sp}"/>`;
       out+=S.clef==='G'?txt(x0+2,y0+4*sp+1.2*sp,'𝄞',7.6*sp,'class="mus"'):txt(x0+2,y0+3*sp+0.15*sp,'𝄢',4.1*sp,'class="mus"');
       const kpos=fifths>0?[38,35,39,36,33,37,34]:[34,37,33,36,32,35,31];
@@ -1253,9 +1282,9 @@ function drawScore(){
             out+=`<line class="stem" x1="${sx.toFixed(1)}" x2="${sx.toFixed(1)}" y1="${(up?yl:yh).toFixed(1)}" y2="${ye.toFixed(1)}"/>`;
             if(!bm&&e.d<4){ const n=e.d===1?2:1; for(let k=0;k<n;k++){ const fy=ye+(up?k*6:-k*6); out+=`<path class="flag" d="M${sx} ${fy} q ${up?'9 6 7 15':'9 -6 7 -15'} q ${up?'0 -8 -7 -11':'0 8 -7 11'} z"/>`; } } } });
         // chord symbols over the treble staff
-        if(S.clef==='G') CH.names.filter(c=>Math.floor(c.u0/barLen)===b).forEach(c=>{ const xx=isFinite(X(c.u0))?X(c.u0):bx+(c.u0-b*barLen)/barLen*bw+8; out+=txt(xx-4,ys(S,S.bottom+15,top),chordLabel(c),14,'class="chordSym"'); });
+        if(S.clef==='G') CH.names.filter(c=>Math.floor(c.u0/barLen)===b).forEach(c=>{ const xx=isFinite(X(c.u0))?X(c.u0):bx+(c.u0-b*barLen)/barLen*bw+8; out+=txt(xx-4,top-2.4*sp,chordLabel(c),14,'class="chordSym"'); });
         // vibrato marks
-        N.filter(o=>o.vib&&(o.p>=60)===(S.clef==='G')&&Math.floor(o.u0/barLen)===b).forEach(o=>{ const xa=X(o.u0)-4, xe=X(Math.min(o.u1,(b+1)*barLen)), xb=isFinite(xe)?xe-6:bx+bw-8; if(!isFinite(xa)) return;
+        N.filter(o=>o.vib&&isTreble(o)===(S.clef==='G')&&Math.floor(o.u0/barLen)===b).forEach(o=>{ const xa=X(o.u0)-4, xe=X(Math.min(o.u1,(b+1)*barLen)), xb=isFinite(xe)?xe-6:bx+bw-8; if(!isFinite(xa)) return;
           const top8=Math.max(...o.n?[S.bottom+8]:[0]), yv=Math.min(ys(S,S.bottom+11,top),ys(S,spell(o.p,fifths).step+7,top)); let d2=`M${xa.toFixed(1)} ${yv.toFixed(1)}`; for(let x=xa,k=0;x<xb;x+=4,k++) d2+=` L${(x+4).toFixed(1)} ${(yv+(k%2?2.2:-2.2)).toFixed(1)}`; out+=`<path class="tie" style="stroke-width:1.3" d="${d2}"/>`; });
         // draw beams
         groups.filter(G=>G.length>1).forEach(G=>{ const up=beamed.get(G[0]).up, ye=G[0]._ye, xs=G.map(e=>X(e.a)+(up?5:-5)), th=4.2, d=up?1:-1;
@@ -1443,9 +1472,9 @@ $('recCancel').addEventListener('click',()=>{ if(rec&&rec.recording) stopRec(tru
 
 
 // ---- theme: Auto (follows Windows) / Dark / Light, remembered
-(()=>{ const K='hum2midi_theme', order=['auto','dark','light'], lab={auto:'◐ Auto',dark:'☾ Dark',light:'☀ Light'}; let t='auto'; try{ t=localStorage.getItem(K)||'auto'; }catch(e){}
-  const apply=()=>{ if(t==='auto') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme=t; $('themeB').textContent=lab[t]; };
-  apply(); $('themeB').addEventListener('click',()=>{ t=order[(order.indexOf(t)+1)%3]; try{ localStorage.setItem(K,t); }catch(e){} apply(); }); })();
+(()=>{ const K='hum2midi_theme', order=['light','dark'], lab={dark:'☾ Dark',light:'☀ Light'}; let t=''; try{ t=localStorage.getItem(K)||''; }catch(e){} if(t!=='light'&&t!=='dark') t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';
+  const apply=()=>{ document.documentElement.dataset.theme=t; $('themeB').textContent=lab[t]; };
+  apply(); $('themeB').addEventListener('click',()=>{ t=order[(order.indexOf(t)+1)%2]; try{ localStorage.setItem(K,t); }catch(e){} apply(); }); })();
 // close the Setup menu when clicking elsewhere
 document.addEventListener('pointerdown',e=>{ const m=$('setup'); if(m.open&&!m.contains(e.target)) m.open=false; });
 // ---- MIDI keyboard: pick it from the list, hear it as a piano (any time — also while recording)
