@@ -1,0 +1,94 @@
+[
+ {
+  "name": "synth 1 - Twinkle Twinkle (hummed, low voice, drifts sharp)",
+  "got": "C3 C3 G3 G3 A3 A3 G3 F3 F3 E3 E3 Eb3 D3 D3 Db3",
+  "n": 15,
+  "key": "C major",
+  "ref": "C3 C3 G3 G3 A3 A3 G3 F3 F3 E3 E3 D3 D3 C3",
+  "score": 86,
+  "errors": 2,
+  "refLen": 14
+ },
+ {
+  "name": "synth 2 - Ode to Joy (la-la, drifts flat, loose)",
+  "got": "Gb3 Gb3 G3 A3 A3 G3 Gb3 E3 D3 D3 Eb3 E3 Gb3 Gb3 E3 E3",
+  "n": 16,
+  "key": "D major",
+  "ref": "Gb3 Gb3 G3 A3 A3 G3 Gb3 E3 D3 D3 E3 Gb3 Gb3 E3 E3",
+  "score": 93,
+  "errors": 1,
+  "refLen": 15
+ },
+ {
+  "name": "synth 3 - Happy Birthday (higher voice, vibrato)",
+  "got": "C4 C4 D4 C4 F4 E4 C4 C4 D4 C4 G4 F4",
+  "n": 12,
+  "key": "C major",
+  "ref": "C4 C4 D4 C4 F4 E4 C4 C4 D4 C4 G4 F4",
+  "score": 100,
+  "errors": 0,
+  "refLen": 12
+ },
+ {
+  "name": "synth 4 - Frere Jacques (quick, breathy, noisy room)",
+  "got": "F3 G3 A3 F3 F3 G3 A3 F3 A3 Bb3 C4 A3 Bb3 C4",
+  "n": 14,
+  "key": "F major",
+  "ref": "F3 G3 A3 F3 F3 G3 A3 F3 A3 Bb3 C4 A3 Bb3 C4",
+  "score": 100,
+  "errors": 0,
+  "refLen": 14
+ },
+ {
+  "name": "real 1 - Row Row Row Your Boat (VocalSet female2, woman, straight)",
+  "got": "C4 C4 D4 E4 E4 D4 E4 F4 G4 C5 G4 E4",
+  "n": 12,
+  "key": "C major",
+  "ref": "C4 C4 C4 D4 E4 E4 D4 E4 F4 G4 C5 C5 C5",
+  "score": 77,
+  "errors": 3,
+  "refLen": 13
+ },
+ {
+  "name": "real 2 - Row Row Row Your Boat (VocalSet male3, man, straight)",
+  "got": "C3 C3 C3 D3 E3 E3 D3 E3 F3 G3 Db4 C4 C4 G3 G3 E3 E3 C3 C3",
+  "n": 19,
+  "key": "C major",
+  "ref": "C3 C3 C3 D3 E3 E3 D3 E3 F3 G3 C4 C4 C4 G3 G3 G3 E3 E3 E3 C3 C3",
+  "score": 86,
+  "errors": 3,
+  "refLen": 21
+ },
+ {
+  "name": "real 3 - Row Row Row Your Boat (VocalSet female5, woman, vibrato)",
+  "got": "B3 C4 B3 C4 B3 C4 C4 D4 E4 D4 E4 F4 D4 E4 F4 G4 C5",
+  "n": 17,
+  "key": "C major",
+  "ref": "C4 C4 C4 D4 E4 E4 D4 E4 F4 G4 C5",
+  "score": 45,
+  "errors": 6,
+  "refLen": 11
+ },
+ {
+  "name": "real 4 - Row Row Row Your Boat (VocalSet male5, man, vibrato)",
+  "got": "Bb2 B2 C3 Db3 Eb3 E3 Eb3 Db3 Eb3 E3 Gb3 B3 Gb3 Eb3 B2 Db3 Gb3 E3",
+  "n": 18,
+  "key": "B major",
+  "ref": "B2 B2 B2 Db3 Eb3 Eb3 Db3 Eb3 E3 Gb3 B3 B3 B3 Gb3 Gb3 Gb3 Eb3 Eb3 Eb3 B2 B2 B2 Gb3 E3",
+  "score": 54,
+  "errors": 11,
+  "refLen": 24
+ },
+ {
+  "name": "real 5 - Scarborough Fair (Wikimedia Commons)",
+  "got": "D4 A4 A4 E4 F4",
+  "n": 5,
+  "key": "C major"
+ },
+ {
+  "name": "real 6 - Danny Boy (Tom Evans, Wikimedia Commons)",
+  "got": "A5 A5 A3 B3 Db4 D4 Db4 D4 Db4 Db4 Db4 Db4 Db4 B3 B3 A3 A3 A3 Gb3 D3",
+  "n": 20,
+  "key": "D major"
+ }
+]

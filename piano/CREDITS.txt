@@ -1,0 +1,3 @@
+Piano samples: "Upright Piano, Knight" from the Versilian Community Sample Library (VCSL),
+sampled by Simon Dalzell of Ivy Audio. CC0 1.0 (public domain) - https://github.com/sgossner/VCSL
+Trimmed to a few seconds per note and compressed for Humnote; two loudness layers, whole-tone steps.

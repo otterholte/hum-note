@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SwiftF0 browser test</title>
+<style>
+  :root{--bg:#fcfcfb;--ink:#0b0b0b;--muted:#52514e;--line:#2a78d6;--grid:#e4e3df}
+  @media (prefers-color-scheme:dark){:root{--bg:#1a1a19;--ink:#f0efec;--muted:#c3c2b7;--line:#3987e5;--grid:#383835}}
+  body{background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,sans-serif;margin:0;padding:16px;max-width:1000px}
+  h1{font-size:18px;margin:0 0 8px} p,label{color:var(--muted)} canvas{width:100%;height:280px;border:1px solid var(--grid);border-radius:6px}
+  pre{white-space:pre-wrap;font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+<h1>SwiftF0 (ONNX, 135 KB) running in the browser</h1>
+<p>Pick a WAV file. It is resampled to 16 kHz, run through <code>swiftf0.onnx</code> with onnxruntime-web (WASM, 1 thread),
+and the pitch track is drawn below (voiced frames, confidence ≥ 0.5). Timing for a whole-file pass and for a
+live-tuner style update (one 22-frame window = 352 ms of audio, yielding the newest final frame) is shown.</p>
+<label>WAV file: <input type="file" id="f" accept="audio/*"></label>
+<canvas id="c" width="1000" height="280"></canvas>
+<pre id="out">loading model…</pre>
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"></script>
+<script>
+const HOP=256, WIN=1875, LEFT=11, LOOK=10;
+const out=document.getElementById('out'), log=s=>{out.textContent+= '\n'+s;};
+ort.env.wasm.numThreads=1;
+ort.env.wasm.wasmPaths='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/';
+let sess;
+const ready=(async()=>{ const t0=performance.now(); sess=await ort.InferenceSession.create('swiftf0.onnx',{executionProviders:['wasm']});
+  out.textContent='model loaded in '+(performance.now()-t0).toFixed(0)+' ms'; })().catch(e=>{out.textContent='load failed: '+e;});
+async function run(x){ // one model call: returns {pitch, conf}
+  const r=await sess.run({audio:new ort.Tensor('float32',x,[1,x.length]), fmin:new ort.Tensor('float32',[46.875],[]), fmax:new ort.Tensor('float32',[2093.75],[])});
+  const pitch=r.pitch.data, conf=Float32Array.from(r.confidence.data); const n=conf.length;
+  for(let i=0;i<n;i++){ let pk=0; for(let j=i*HOP;j<Math.min(x.length,(i+1)*HOP);j++) pk=Math.max(pk,Math.abs(x[j])); if(pk<1e-3) conf[i]=0; }
+  return {pitch,conf}; }
+async function detect(x){ // same windowing as swift_f0.SwiftF0.detect
+  const n=Math.max(1,Math.floor(x.length/HOP)), P=new Float32Array(n), C=new Float32Array(n);
+  for(let s=0;s<n;s+=WIN){ const e=Math.min(s+WIN,n), l=Math.max(0,s-LEFT);
+    const w=e<n? x.subarray(l*HOP,(e+LOOK)*HOP) : x.subarray(l*HOP);
+    const r=await run(w); for(let i=s;i<e;i++){ P[i]=r.pitch[i-l]; C[i]=r.conf[i-l]; } }
+  return {P,C}; }
+async function to16k(buf){ const ac=new AudioContext(); const a=await ac.decodeAudioData(buf); ac.close();
+  const oc=new OfflineAudioContext(1,Math.ceil(a.duration*16000),16000); const s=oc.createBufferSource(); s.buffer=a; s.connect(oc.destination); s.start();
+  const r=await oc.startRendering(); const x=r.getChannelData(0); let pk=0; for(const v of x) pk=Math.max(pk,Math.abs(v)); for(let i=0;i<x.length;i++) x[i]*=0.9/(pk||1); return x; }
+function draw(P,C){ const cv=document.getElementById('c'), g=cv.getContext('2d'), W=cv.width, H=cv.height; g.clearRect(0,0,W,H);
+  const css=getComputedStyle(document.documentElement); const m=[]; for(let i=0;i<P.length;i++) if(C[i]>=0.5) m.push(69+12*Math.log2(P[i]/440));
+  if(!m.length) return; const s=[...m].sort((a,b)=>a-b), lo=Math.floor(s[Math.floor(s.length*0.01)])-2, hi=Math.ceil(s[Math.floor(s.length*0.99)])+2;
+  g.strokeStyle=css.getPropertyValue('--grid'); for(let k=lo;k<=hi;k++){ const y=H-(k-lo)/(hi-lo)*H; g.beginPath(); g.moveTo(0,y); g.lineTo(W,y); g.stroke(); }
+  g.strokeStyle=css.getPropertyValue('--line'); g.lineWidth=2; g.beginPath(); let pen=false;
+  for(let i=0;i<P.length;i++){ if(C[i]<0.5){pen=false;continue;} const x=i/P.length*W, y=H-((69+12*Math.log2(P[i]/440))-lo)/(hi-lo)*H; pen?g.lineTo(x,y):g.moveTo(x,y); pen=true; } g.stroke(); }
+async function go(buf,label){ await ready; const x=await to16k(buf); const dur=x.length/16000;
+  let t0=performance.now(); const {P,C}=await detect(x); const tAll=performance.now()-t0;
+  // live-tuner style update: newest 22 frames (352 ms) -> one final frame
+  const w=x.subarray(0,HOP*22); for(let i=0;i<3;i++) await run(w); t0=performance.now(); const N=50; for(let i=0;i<N;i++) await run(w); const tUp=(performance.now()-t0)/N;
+  let v=0; for(const c of C) if(c>=0.5) v++;
+  const res={file:label, seconds:+dur.toFixed(2), frames:P.length, voiced:v, ms_whole_file:+tAll.toFixed(1), ms_per_second_audio:+(tAll/dur).toFixed(2), ms_per_live_update:+tUp.toFixed(2),
+    first_voiced:[...P].map((p,i)=>[i,p,C[i]]).filter(r=>r[2]>=0.5).slice(0,5).map(r=>[r[0],+r[1].toFixed(2)])};
+  window.RESULT=res; log(JSON.stringify(res,null,1)); draw(P,C); }
+document.getElementById('f').onchange=async e=>{ const f=e.target.files[0]; if(f) go(await f.arrayBuffer(), f.name); };
+const q=new URLSearchParams(location.search).get('wav'); if(q) fetch(q).then(r=>r.arrayBuffer()).then(b=>go(b,q));
+</script>
+</body>
+</html>

@@ -1,0 +1,154 @@
+<title>Note Fixer 01:58:26</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@600;700&family=Inter:wght@400;500;600&display=swap">
+<style>
+/* Layout: one column of phrases, each a stack of note rows sized for a thumb */
+:root{
+  --bg:#f6f5f2; --panel:#ffffff; --ink:#1d1b22; --mute:#6f6b78; --line:#e4e1ea; --row:#f0eef4;
+  --acc:#e8622f; --accSoft:#fde7dc; --ok:#1f8a55; --okSoft:#dcf3e6; --bad:#c8453d; --badSoft:#f9e0de;
+  --display:'Familjen Grotesk',Inter,system-ui,sans-serif; --body:Inter,system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#1c1d21; --panel:#24252a; --ink:#d6d7db; --mute:#8d8f98; --line:#33353c; --row:#2a2b31;
+  --acc:#e0754c; --accSoft:#3b2a22; --ok:#5fb385; --okSoft:#203327; --bad:#e0766c; --badSoft:#3a2524; color-scheme:dark } }
+:root[data-theme="dark"]{
+  --bg:#1c1d21; --panel:#24252a; --ink:#d6d7db; --mute:#8d8f98; --line:#33353c; --row:#2a2b31;
+  --acc:#e0754c; --accSoft:#3b2a22; --ok:#5fb385; --okSoft:#203327; --bad:#e0766c; --badSoft:#3a2524; color-scheme:dark }
+body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--body)}
+.wrap{max-width:720px;margin:0 auto;padding-block:20px 60px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:16px}
+h1{font:700 26px/1.1 var(--display);margin:0;text-wrap:balance}
+.lede{color:var(--mute);margin:4px 0 0;max-width:60ch}
+.legend{display:flex;flex-wrap:wrap;gap:8px 14px;font-size:13px;color:var(--mute)}
+.legend b{color:var(--ink);font-weight:600}
+.status{font-size:13px;color:var(--mute)}
+.phrase{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.ph-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.ph-head h2{font:700 18px/1.2 var(--display);margin:0 auto 0 0}
+.ph-head h2 small{font:500 13px var(--body);color:var(--mute);margin-left:6px}
+button{font:600 14px/1 var(--body);min-height:40px;padding:0 12px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;gap:6px;touch-action:manipulation}
+button:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+button.primary{background:var(--acc);border-color:var(--acc);color:#fff}
+button.playing{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.note{display:grid;grid-template-columns:2.1em auto 1fr auto auto;align-items:center;gap:8px;padding:6px;border-radius:12px;background:var(--row)}
+.note.changed{background:var(--accSoft)}
+.note.removed{background:var(--badSoft)}
+.note.removed .pitch b{text-decoration:line-through;opacity:.6}
+.num{font:600 13px var(--body);color:var(--mute);text-align:right;font-variant-numeric:tabular-nums}
+.pitch{display:flex;align-items:center;gap:6px;min-width:0}
+.pitch b{font:700 22px/1 var(--display);min-width:2.6em;text-align:center;font-variant-numeric:tabular-nums}
+.pitch .step{min-width:40px;padding:0;justify-content:center;font-size:16px}
+.meta{font-size:12px;color:var(--mute);line-height:1.3;min-width:0}
+.meta .was{color:var(--acc);font-weight:600}
+.meta .hint{color:var(--bad)}
+.x{min-width:40px;justify-content:center;padding:0}
+.note.removed .x{background:var(--bad);border-color:var(--bad);color:#fff}
+textarea{width:100%;box-sizing:border-box;min-height:44px;font:14px/1.4 var(--body);border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--bg);color:var(--ink);resize:vertical}
+.foot{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.saved{font-size:12px;color:var(--ok)}
+@media (max-width:460px){ .note{grid-template-columns:1.6em auto 1fr auto;} .note .piano{grid-column:3;justify-self:start} .note .x{grid-row:1;grid-column:4} .pitch b{font-size:20px;min-width:2.4em} }
+@media (prefers-reduced-motion:reduce){ *{transition:none!important} }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Fix the notes: take 01:58:26</h1>
+    <p class="lede">Tap <b>▶</b> to hear that bit of your voice and <b>♪</b> to hear the note on piano. Use ▲ ▼ to change a note, ✕ if it isn't a note at all. Your changes save as you go, and Claude reads them from here.</p>
+  </header>
+  <div class="legend"><span><b>Orange</b> = you changed it</span><span><b>Red</b> = removed</span><span><b>"sounds like"</b> = what the pitch measured closest to</span></div>
+  <p class="status" id="status">Loading your saved changes…</p>
+  <div id="phrases"></div>
+  <section class="phrase">
+    <div class="ph-head"><h2>Anything else?</h2></div>
+    <textarea id="general" placeholder="Missing notes, rhythm, what song this is…" aria-label="General notes for Claude"></textarea>
+    <div class="foot"><button type="button" id="copy">Copy all changes as text</button><span class="saved" id="genSaved"></span></div>
+  </section>
+</div>
+
+<script>
+// The take's notes as the app heard them: [start s, end s, midi, measured-closest midi or null when the same]
+const NOTES=[[1.90,2.10,48],[2.11,2.30,50],[2.34,2.74,52],[2.75,2.94,50],[2.95,3.17,48],[3.18,3.38,50],[3.44,3.62,47],[3.62,3.82,45],[3.83,4.61,48],
+ [5.10,5.31,48,49],[5.32,5.58,50,51],[5.58,5.81,52],[5.81,6.09,50],[6.10,6.27,48],[6.33,6.55,50],[6.56,6.88,47,46],[6.93,7.62,50],
+ [8.32,8.46,48],[8.51,8.71,50],[8.72,9.05,52],[9.06,9.38,55],[9.45,9.70,50],[9.70,9.82,52],[9.82,9.97,50],[9.97,10.17,48],[10.18,10.37,45],[10.42,10.63,47],[10.63,10.96,48],
+ [11.38,11.87,52],[11.87,12.57,53],[12.97,13.43,53],[13.43,13.88,52,53],[13.91,14.05,53],[14.05,14.31,52]];
+const PHRASES=[[0,8],[9,16],[17,27],[28,33]];
+const NAMES=['C','D♭','D','E♭','E','F','G♭','G','A♭','A','B♭','B'], nm=p=>NAMES[((p%12)+12)%12]+(Math.floor(p/12)-1);
+const fix={}; // index -> {pitch, removed}
+let general='';
+const $=id=>document.getElementById(id);
+
+// ---- audio: your voice (slices of the take) and the upright piano (VCSL Knight, CC0)
+let ctx=null, voice=null; const piano={}; const KEYS=[39,41,43,45,47,49,51,53,55,57,59,61];
+function audio(){ if(!ctx){ ctx=new (window.AudioContext||window.webkitAudioContext)(); } if(ctx.state==='suspended') ctx.resume(); return ctx; }
+async function loadBuf(url){ const r=await fetch(url); if(!r.ok) throw new Error(url); return await audio().decodeAudioData(await r.arrayBuffer()); }
+async function voiceBuf(){ if(!voice) voice=loadBuf('take.mp3'); return voice; }
+async function pianoBuf(k){ if(!piano[k]) piano[k]=loadBuf('p/k2_'+k+'.mp3'); return piano[k]; }
+let playing=[], playingBtn=null;
+function stopAll(){ playing.forEach(s=>{ try{ s.stop(); }catch(e){} }); playing=[]; if(playingBtn){ playingBtn.classList.remove('playing'); playingBtn=null; } }
+function mark(btn,dur){ if(!btn) return; playingBtn=btn; btn.classList.add('playing'); const b=btn; setTimeout(()=>{ if(playingBtn===b){ b.classList.remove('playing'); playingBtn=null; } },dur*1000); }
+async function playVoice(a,b,btn,when=0){ const c=audio(), buf=await voiceBuf(), s=c.createBufferSource(), g=c.createGain(); s.buffer=buf; g.gain.value=1; s.connect(g); g.connect(c.destination);
+  const t=c.currentTime+0.03+when, st=Math.max(0,a-0.04), d=b-a+0.1; s.start(t,st,d); playing.push(s); mark(btn,d+when); }
+async function playPiano(p,dur,btn,when=0,vol=1){ const c=audio(), k=KEYS.reduce((x,y)=>Math.abs(y-p)<Math.abs(x-p)?y:x), buf=await pianoBuf(k);
+  const s=c.createBufferSource(), g=c.createGain(); s.buffer=buf; s.playbackRate.value=2**((p-k)/12); s.connect(g); g.connect(c.destination);
+  const t=c.currentTime+0.03+when, len=Math.max(0.35,dur); g.gain.setValueAtTime(0.9*vol,t); g.gain.setTargetAtTime(0,t+len,0.12); s.start(t); s.stop(t+len+0.8); playing.push(s); if(btn) mark(btn,len+when); }
+const cur=i=>fix[i]&&fix[i].pitch!=null?fix[i].pitch:NOTES[i][2];
+async function playPhrase(k,mode,btn){ stopAll(); const [a,b]=PHRASES[k], t0=NOTES[a][0];
+  if(mode!=='piano') playVoice(t0,NOTES[b][1],null);
+  for(let i=a;i<=b;i++){ if(mode==='voice') break; if(fix[i]&&fix[i].removed) continue; playPiano(cur(i),NOTES[i][1]-NOTES[i][0],null,NOTES[i][0]-t0,mode==='both'?0.55:1); }
+  mark(btn,NOTES[b][1]-t0+0.4); }
+
+// ---- saving: one document per changed note in the "fixes" collection, plus one for general notes
+let db=null, saveTimer={};
+function save(id,data){ if(!db){ try{ localStorage.setItem('fix_'+id,JSON.stringify(data)); }catch(e){} return; }
+  clearTimeout(saveTimer[id]); saveTimer[id]=setTimeout(()=>{ db.collection('fixes').doc(id).set(data).catch(()=>{ $('status').textContent='Could not save that change. Check your connection and try again.'; }); },400); }
+
+// ---- page
+function render(){
+  const root=$('phrases'); root.innerHTML='';
+  PHRASES.forEach(([a,b],k)=>{
+    const sec=document.createElement('section'); sec.className='phrase';
+    const head=document.createElement('div'); head.className='ph-head';
+    const h=document.createElement('h2'); h.textContent='Phrase '+(k+1); const sm=document.createElement('small'); sm.textContent=NOTES[a][0].toFixed(1)+'–'+NOTES[b][1].toFixed(1)+' s'; h.appendChild(sm); head.appendChild(h);
+    [['voice','▶ Voice'],['piano','♪ Piano'],['both','▶♪ Both']].forEach(([m,l])=>{ const bt=document.createElement('button'); bt.type='button'; bt.textContent=l; if(m==='both') bt.className='primary'; bt.onclick=()=>playPhrase(k,m,bt); head.appendChild(bt); });
+    sec.appendChild(head);
+    for(let i=a;i<=b;i++){ const [s,e,p0,sung]=NOTES[i], f=fix[i]||{}, p=cur(i);
+      const row=document.createElement('div'); row.className='note'+(f.removed?' removed':(p!==p0?' changed':''));
+      const n=document.createElement('span'); n.className='num'; n.textContent=i+1;
+      const v=document.createElement('button'); v.type='button'; v.textContent='▶'; v.setAttribute('aria-label','Hear your voice, note '+(i+1)); v.onclick=()=>{ stopAll(); playVoice(s,e,v); };
+      const pitch=document.createElement('div'); pitch.className='pitch';
+      const dn=document.createElement('button'); dn.type='button'; dn.className='step'; dn.textContent='▼'; dn.setAttribute('aria-label','Lower note '+(i+1));
+      const nb=document.createElement('b'); nb.textContent=nm(p);
+      const up=document.createElement('button'); up.type='button'; up.className='step'; up.textContent='▲'; up.setAttribute('aria-label','Raise note '+(i+1));
+      const step=d=>{ const np=cur(i)+d; fix[i]={...(fix[i]||{}),pitch:np===p0?null:np,removed:false}; save('n'+(i+1),{note:i+1,start:s,heard:nm(p0),correct:nm(np),midi:np,removed:false}); render(); stopAll(); playPiano(np,e-s,null); };
+      dn.onclick=()=>step(-1); up.onclick=()=>step(1); pitch.append(dn,nb,up);
+      const meta=document.createElement('div'); meta.className='meta';
+      const bits=[]; if(f.removed) bits.push('<span class="hint">not a note</span>'); else if(p!==p0) bits.push('<span class="was">was '+nm(p0)+'</span>'); if(sung!=null&&!f.removed) bits.push('sounds like '+nm(sung)); bits.push((e-s).toFixed(2)+' s');
+      meta.innerHTML=bits.join('<br>');
+      const pi=document.createElement('button'); pi.type='button'; pi.className='piano'; pi.textContent='♪'; pi.setAttribute('aria-label','Hear note '+(i+1)+' on piano'); pi.onclick=()=>{ stopAll(); playPiano(cur(i),e-s,pi); };
+      const x=document.createElement('button'); x.type='button'; x.className='x'; x.textContent='✕'; x.setAttribute('aria-label',(f.removed?'Bring back':'Remove')+' note '+(i+1)); x.setAttribute('aria-pressed',f.removed?'true':'false');
+      x.onclick=()=>{ const rm=!(fix[i]&&fix[i].removed); fix[i]={...(fix[i]||{}),removed:rm}; save('n'+(i+1),{note:i+1,start:s,heard:nm(p0),correct:rm?null:nm(cur(i)),midi:rm?null:cur(i),removed:rm}); render(); };
+      const mid=document.createElement('div'); mid.style.display='flex'; mid.style.flexDirection='column'; mid.style.gap='4px'; mid.style.minWidth='0'; mid.append(pitch,meta);
+      row.append(n,v,mid,pi,x); sec.appendChild(row); }
+    const ta=document.createElement('textarea'); ta.id='pc'+k; ta.placeholder='Notes for phrase '+(k+1)+' (missing notes, timing…)'; ta.setAttribute('aria-label','Comments for phrase '+(k+1)); ta.value=(fix['p'+k]&&fix['p'+k].text)||'';
+    ta.oninput=()=>{ fix['p'+k]={text:ta.value}; save('phrase'+(k+1),{phrase:k+1,text:ta.value}); };
+    sec.appendChild(ta); root.appendChild(sec); });
+}
+function summary(){ const L=[]; NOTES.forEach((n,i)=>{ const f=fix[i]; if(!f) return; if(f.removed) L.push(`${i+1}: remove (was ${nm(n[2])})`); else if(f.pitch!=null&&f.pitch!==n[2]) L.push(`${i+1}: ${nm(n[2])} → ${nm(f.pitch)}`); });
+  PHRASES.forEach((_,k)=>{ const t=fix['p'+k]&&fix['p'+k].text; if(t) L.push(`Phrase ${k+1}: ${t}`); }); if(general) L.push('General: '+general); return L.length?L.join('\n'):'No changes yet.'; }
+$('copy').onclick=async()=>{ const t=summary(); try{ await navigator.clipboard.writeText(t); $('genSaved').textContent='Copied'; }catch(e){ $('general').value=general+'\n\n'+t; $('general').select(); $('genSaved').textContent='Select and copy the text above'; } };
+$('general').oninput=()=>{ general=$('general').value; save('general',{text:general}); $('genSaved').textContent='Saved'; };
+
+function apply(id,d){ if(!d) return; if(id==='general'){ general=d.text||''; if(document.activeElement!==$('general')) $('general').value=general; return; }
+  let m=id.match(/^n(\d+)$/); if(m){ const i=+m[1]-1, p0=NOTES[i][2]; fix[i]={removed:!!d.removed,pitch:d.midi!=null&&d.midi!==p0?d.midi:(d.removed&&fix[i]?fix[i].pitch:null)}; return; }
+  m=id.match(/^phrase(\d+)$/); if(m) fix['p'+(+m[1]-1)]={text:d.text||''}; }
+render();
+(async()=>{
+  const timer=setTimeout(()=>{ $('status').textContent='Saving isn’t reachable right now, so changes stay on this phone. Use “Copy all changes as text” to send them.'; },10000);
+  try{ db=window.claude?await window.claude.use('db'):null; }catch(e){ db=null; }
+  if(!db){ clearTimeout(timer); try{ for(const k of Object.keys(localStorage)) if(k.startsWith('fix_')) apply(k.slice(4),JSON.parse(localStorage.getItem(k))); }catch(e){} render(); $('status').textContent='Saving to Claude isn’t available in this view, so changes stay on this device. Use “Copy all changes as text” to send them.'; return; }
+  let first=true;
+  db.collection('fixes').onSnapshot(snap=>{ clearTimeout(timer); snap.docs.forEach(d=>apply(d.id,d.data())); if(first||!document.activeElement||document.activeElement.tagName!=='TEXTAREA') render(); first=false;
+    const n=snap.docs.filter(d=>/^n\d+$/.test(d.id)).length; $('status').textContent=n?`${n} change${n>1?'s':''} saved. Claude can read them.`:'Changes save automatically. Claude can read them.'; },
+    ()=>{ clearTimeout(timer); $('status').textContent='Could not load saved changes. Reload the page to try again.'; });
+})();
+</script>

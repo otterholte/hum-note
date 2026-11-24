@@ -1,0 +1,36 @@
+# Your own takes (your voice) - kept on this PC only
+recordings/
+demo-audio/
+tools/fixer/take.mp3
+tools/fixer/p/
+tools/fixer/Note Fixer*.html
+tools/render/take_*.json
+
+# Old single-file backups (the versions live in git history instead)
+*.bak
+
+# Big downloaded / generated test data (rebuilt by the scripts)
+tools/piano-src/
+tools/listen-test/bench/*
+!tools/listen-test/bench/index.json
+tools/listen-test/clips/*
+!tools/listen-test/clips/index.json
+tools/listen-test/*_swift/
+tools/listen-test/out*/
+tools/listen-test/variants/
+tools/pitch-compare/real/
+tools/pitch-compare/synth/
+tools/pitch-compare/vocalset/
+tools/pitch-compare/out/
+tools/pitch-compare/pylib/
+tools/pitch-compare/take_swift/
+tools/pitch-compare/*.json
+tools/pitch-compare/*.png
+tools/pitch-compare/*.npy
+tools/*.png
+
+__pycache__/
+*.pyc
+.claude/settings.local.json
+icon.old.*
+tools/listen-test/sources/

@@ -1,0 +1,38 @@
+
+synth 1 - Twinkle Twinkle (hummed, low voice, drifts sharp)   SCORE 86% (2 wrong/missing/extra of 14)
+  melody : C3 C3 G3 G3 A3 A3 G3 F3 F3 E3 E3 D3 D3 C3
+  heard  : C3 C3 G3 G3 A3 A3 G3 F3 F3 E3 E3 Eb3 D3 D3 Db3
+
+synth 2 - Ode to Joy (la-la, drifts flat, loose)   SCORE 93% (1 wrong/missing/extra of 15)
+  melody : Gb3 Gb3 G3 A3 A3 G3 Gb3 E3 D3 D3 E3 Gb3 Gb3 E3 E3
+  heard  : Gb3 Gb3 G3 A3 A3 G3 Gb3 E3 D3 D3 Eb3 E3 Gb3 Gb3 E3 E3
+
+synth 3 - Happy Birthday (higher voice, vibrato)   SCORE 100% (0 wrong/missing/extra of 12)
+  melody : C4 C4 D4 C4 F4 E4 C4 C4 D4 C4 G4 F4
+  heard  : C4 C4 D4 C4 F4 E4 C4 C4 D4 C4 G4 F4
+
+synth 4 - Frere Jacques (quick, breathy, noisy room)   SCORE 100% (0 wrong/missing/extra of 14)
+  melody : F3 G3 A3 F3 F3 G3 A3 F3 A3 Bb3 C4 A3 Bb3 C4
+  heard  : F3 G3 A3 F3 F3 G3 A3 F3 A3 Bb3 C4 A3 Bb3 C4
+
+real 1 - Row Row Row Your Boat (VocalSet female2, woman, straight)   SCORE 77% (3 wrong/missing/extra of 13)
+  melody : C4 C4 C4 D4 E4 E4 D4 E4 F4 G4 C5 C5 C5
+  heard  : C4 C4 D4 E4 E4 D4 E4 F4 G4 C5 G4 E4
+
+real 2 - Row Row Row Your Boat (VocalSet male3, man, straight)   SCORE 86% (3 wrong/missing/extra of 21)
+  melody : C3 C3 C3 D3 E3 E3 D3 E3 F3 G3 C4 C4 C4 G3 G3 G3 E3 E3 E3 C3 C3
+  heard  : C3 C3 C3 D3 E3 E3 D3 E3 F3 G3 Db4 C4 C4 G3 G3 E3 E3 C3 C3
+
+real 3 - Row Row Row Your Boat (VocalSet female5, woman, vibrato)   SCORE 45% (6 wrong/missing/extra of 11)
+  melody : C4 C4 C4 D4 E4 E4 D4 E4 F4 G4 C5
+  heard  : B3 C4 B3 C4 B3 C4 C4 D4 E4 D4 E4 F4 D4 E4 F4 G4 C5
+
+real 4 - Row Row Row Your Boat (VocalSet male5, man, vibrato)   SCORE 54% (11 wrong/missing/extra of 24)
+  melody : B2 B2 B2 Db3 Eb3 Eb3 Db3 Eb3 E3 Gb3 B3 B3 B3 Gb3 Gb3 Gb3 Eb3 Eb3 Eb3 B2 B2 B2 Gb3 E3
+  heard  : Bb2 B2 C3 Db3 Eb3 E3 Eb3 Db3 Eb3 E3 Gb3 B3 Gb3 Eb3 B2 Db3 Gb3 E3
+
+real 5 - Scarborough Fair (Wikimedia Commons)
+  heard  : D4 A4 A4 E4 F4
+
+real 6 - Danny Boy (Tom Evans, Wikimedia Commons)
+  heard  : A5 A5 A3 B3 Db4 D4 Db4 D4 Db4 Db4 Db4 Db4 Db4 B3 B3 A3 A3 A3 Gb3 D3
