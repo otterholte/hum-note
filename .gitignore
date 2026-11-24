@@ -39,3 +39,14 @@ tools/listen-test/ht/*
 !tools/listen-test/ht/index.json
 tools/listen-test/htx/*
 !tools/listen-test/htx/index.json
+tools/listen-test/csd/*
+!tools/listen-test/csd/index.json
+tools/listen-test/csdx/*
+!tools/listen-test/csdx/index.json
+tools/listen-test/vocadito_src/
+tools/listen-test/voc/*
+!tools/listen-test/voc/index.json
+tools/listen-test/vocx/*
+!tools/listen-test/vocx/index.json
+tools/listen-test/ob_*/
+tools/listen-test/*.log
