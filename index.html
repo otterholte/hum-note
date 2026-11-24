@@ -51,6 +51,9 @@ button:focus-visible,.file:focus-within,input:focus-visible,select:focus-visible
 .keys{position:relative;border-right:1px solid var(--line)}
 .scroll{overflow-x:auto;overflow-y:hidden;position:relative;-webkit-overflow-scrolling:touch;height:100%}
 .roll:fullscreen{height:100vh;width:100vw;border-radius:0;border:0}
+.selBar{position:absolute;left:52px;top:28px;z-index:4;display:flex;align-items:center;gap:6px;padding:4px 4px 4px 10px;border-radius:12px;border:1px solid var(--line);background:var(--panel);box-shadow:0 4px 16px rgba(0,0,0,.18);font-size:14px;font-weight:600}
+.selBar button{min-height:34px;padding:0 12px;font-size:14px;border-radius:9px}.selBar #selDel{background:var(--acc);border-color:var(--acc);color:#fff}
+.roll #cv{touch-action:none}
 .fsB{position:absolute;right:8px;top:30px;z-index:3;min-height:32px;padding:0 10px;font-size:16px;border-radius:8px;opacity:.85}
 canvas{display:block}
 .transport{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 4px}
@@ -82,7 +85,7 @@ canvas{display:block}
 .octBox{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);border-radius:12px;padding:2px}.octBox button{min-height:34px;padding:0 10px;border:0;background:transparent}.octBox span{font-size:13px;color:var(--mute);min-width:5.2em;text-align:center}
 #scoreSvg .chordSym{font:700 14px Inter,sans-serif;fill:var(--acc2);cursor:pointer}#scoreSvg .chordSym:hover{text-decoration:underline}#scoreSvg .chordSym.set{fill:var(--acc)}
 #chordPop{position:fixed;z-index:50;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.25);padding:10px;display:flex;flex-direction:column;gap:8px;max-width:340px}
-#chordPop .row{display:flex;flex-wrap:wrap;gap:6px}#chordPop button{min-height:34px;padding:0 10px;font-size:14px}#chordPop small{color:var(--mute)}
+#chordPop .row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}#chordPop button.picked{outline:3px solid var(--acc2);outline-offset:1px;background:color-mix(in srgb,var(--acc2) 15%,var(--panel))}#chordPop .pickN{color:var(--mute);font-size:13px}#chordPop button.primary{background:var(--acc);border-color:var(--acc);color:#fff}#chordPop button.primary:disabled{opacity:.45;cursor:default}#chordPop button{min-height:34px;padding:0 10px;font-size:14px}#chordPop small{color:var(--mute)}
 .scoreHead .seg button{min-height:34px;padding:0 10px;font-size:14px}
 #scoreMsg:empty{display:none}
 #scoreSvg{display:block;max-width:100%}
@@ -202,7 +205,7 @@ button.q,label.q{background:transparent;border-color:transparent}button.q:hover,
         <div class="mrow micRow"><label for="mic">Microphone</label><select id="mic"><option value="">Windows default</option></select><div class="meter" title="Live input level — it should jump when you sing"><i id="micLvl"></i></div><span class="status" id="micS"></span></div>
         <div class="mrow"><label for="midiIn">MIDI keyboard</label><span id="midiL" title="Play your MIDI keyboard and hear it as a piano in your headphones"><select id="midiIn" aria-label="MIDI keyboard"><option value="">Off</option></select><i id="midiDot" aria-hidden="true"></i></span></div>
         <div class="mrow"><label class="hearL" id="hearL" hidden><input type="checkbox" id="hear"> Hear myself while recording <span class="status" id="hearS"></span></label></div>
-        <div class="mrow folder"><button id="pick" type="button">Choose save folder</button><span class="status" id="folderS">Not set — new recordings will go to Downloads.</span></div>
+        <div class="mrow folder"><button id="pick" type="button">Choose save folder</button><span class="status" id="folderS">Not set: takes are kept inside Humnote in this browser.</span></div>
         <div class="mrow"><button id="demo" type="button">Load the sample take</button></div>
       </div>
     </details>
@@ -254,6 +257,7 @@ button.q,label.q{background:transparent;border-color:transparent}button.q:hover,
   </div>
   <div class="roll" id="roll">
     <button type="button" class="fsB" id="fsB" title="Full screen (Esc to leave)">⛶</button>
+    <div class="selBar" id="selBar" hidden><span id="selN"></span><button type="button" id="selDel">🗑 Delete</button><button type="button" id="selNone" aria-label="Unselect">✕</button></div>
     <div class="keys"><canvas id="kc"></canvas></div>
     <div class="scroll" id="sc"><canvas id="cv"></canvas><div class="loopr" id="loopR" hidden></div><div class="ph" id="ph"></div></div>
   </div>
@@ -983,7 +987,7 @@ function sized(cv,w,h){ const d=devicePixelRatio||1; if(cv._w!==w||cv._h!==h||cv
 let G=null;
 const Y=p=>RULER+(G.hi-p)*G.rowH;
 function draw(){
-  if(!st.F) return; G=geom(); const {lo,hi,rowH,H,W}=G; const c0=colors();
+  if(!st.F) return; updSel(); G=geom(); const {lo,hi,rowH,H,W}=G; const c0=colors();
   const k=sized($('kc'),44,H), c=sized($('cv'),W,H);
   const inKey=new Set(st.res.key?st.res.key.scale:[]);
   k.fillStyle=c0.panel; k.fillRect(0,0,44,RULER);
@@ -1122,13 +1126,28 @@ function snapT(t,skip,e){ if(free(e)) return {t,g:null}; let best=null,bd=SNAP_P
 function joined(n,side){ const edge=side==='start'?n.start:n.end; let best=null,bp=1e9;
   st.notes.forEach(o=>{ if(o===n) return; const v=side==='start'?o.end:o.start; if(Math.abs(v-edge)<=0.035){ const dp=Math.abs(o.pitch-n.pitch); if(dp<bp){bp=dp;best=o;} } });
   return best; }
+function updSel(){ const n=selSet.size||(st.notes[st.sel]?1:0); $('selBar').hidden=!n; if(n) $('selN').textContent=n===1?'1 note':`${n} notes`; }
+function deleteSelected(){ const g=selSet.size?[...selSet]:st.notes[st.sel]?[st.notes[st.sel]]:[]; if(!g.length) return; pushUndo(); const del=new Set(g);
+  st.notes=st.notes.filter(n=>!del.has(n)); selSet=new Set(); st.sel=-1; commit(); toast(g.length===1?'Deleted 1 note (Undo brings it back)':`Deleted ${g.length} notes (Undo brings them back)`); }
+$('selDel').addEventListener('click',deleteSelected);
+$('selNone').addEventListener('click',()=>{ selSet=new Set(); if(st.loop){ st.loop=null; showLoop(); } select(-1); });
 const cv=$('cv');
+const HOLD_MS=380, PAN_PX=9;
 cv.addEventListener('pointerdown',e=>{ if(!G||e.button!==0) return; const h=hit(e), on=noteAt(h); cv.setPointerCapture(e.pointerId);
+  if(e.pointerType==='touch'){ const sc=$('sc'); // decide on a swipe (scroll), a tap, or a press-and-hold (select / move)
+    drag={mode:'pending',h0:h,on,x0:e.clientX,y0:e.clientY,ly:e.clientY,sl0:sc.scrollLeft,moved:false};
+    drag.timer=setTimeout(()=>{ if(!drag||drag.mode!=='pending') return; const t=drag; startDrag(t.h0,t.on,false); drag.cx=t.x0; drag.cy=t.y0; drag.raf=requestAnimationFrame(autoScroll); if(navigator.vibrate) navigator.vibrate(12);
+      if(drag.mode==='time') toast('Selecting: drag across the notes'); },HOLD_MS);
+    return; }
+  startDrag(h,on,e.shiftKey); drag.cx=e.clientX; drag.cy=e.clientY; drag.shift=e.shiftKey; drag.raf=requestAnimationFrame(autoScroll); });
+function startDrag(h,on,shift){ const e={shiftKey:shift};
   if(on.i>=0&&selSet.size>1&&selSet.has(st.notes[on.i])&&(on.part==='body'||e.shiftKey)){ const g=[...selSet]; drag={mode:'group',h0:h,g,origs:g.map(n=>({n,s:n.start,e:n.end,p:n.pitch})),loop0:st.loop?[...st.loop]:null,moved:false,copy:e.shiftKey}; }
   else if(on.i>=0){ if(!selSet.has(st.notes[on.i])) clearSel(); select(on.i); const n=st.notes[on.i], cp=e.shiftKey; drag={mode:cp?'body':on.part,n,h0:h,orig:{...n},link:cp||on.part==='body'?null:joined(n,on.part),moved:false,copy:cp}; }
-  else drag={mode:'time',h0:h,moved:false};
-  drag.cx=e.clientX; drag.cy=e.clientY; drag.shift=e.shiftKey; drag.raf=requestAnimationFrame(autoScroll); });
-cv.addEventListener('pointermove',e=>{ if(drag){ drag.cx=e.clientX; drag.cy=e.clientY; drag.shift=e.shiftKey; } dragMove(e); });
+  else drag={mode:'time',h0:h,moved:false}; }
+cv.addEventListener('pointermove',e=>{
+  if(drag&&drag.mode==='pending'){ if(Math.hypot(e.clientX-drag.x0,e.clientY-drag.y0)>PAN_PX){ clearTimeout(drag.timer); drag.mode='pan'; } else return; }
+  if(drag&&drag.mode==='pan'){ $('sc').scrollLeft=drag.sl0-(e.clientX-drag.x0); window.scrollBy(0,drag.ly-e.clientY); drag.ly=e.clientY; return; }
+  if(drag){ drag.cx=e.clientX; drag.cy=e.clientY; drag.shift=e.shiftKey; } dragMove(e); });
 function dragMove(e){ if(!G) return; const h=hit(e);
   if(!drag){ const on=noteAt(h); cv.style.cursor=on.i<0?(h.y<RULER?'col-resize':'crosshair'):e.shiftKey?'copy':on.part==='body'?'move':'ew-resize'; return; }
   if(drag.mode==='time'){ if(Math.abs(h.x-drag.h0.x)<6&&!drag.moved) return; drag.moved=true; const a=Math.max(0,Math.min(drag.h0.t,h.t)), b=Math.min(G.dur,Math.max(drag.h0.t,h.t)); st.loop=[a,b]; showLoop(); selectRange(a,b); return; }
@@ -1154,11 +1173,13 @@ function dragMove(e){ if(!G) return; const h=hit(e);
     else { t=Math.max(t,n.start+0.04); if(L) t=Math.min(t,L.end-0.04); n.end=t; if(L){ L.start=t; L.ed=1; } }
   }
   n.ed=1; st.guide=guide; draw(); }
-cv.addEventListener('pointerup',e=>{ const d=drag; drag=null; st.guide=null; if(d) cancelAnimationFrame(d.raf); if(!d||!G) return;
+cv.addEventListener('pointerup',e=>{ const d=drag; drag=null; st.guide=null; if(d){ cancelAnimationFrame(d.raf); clearTimeout(d.timer); } if(!d||!G) return;
+  if(d.mode==='pan') return;
+  if(d.mode==='pending'){ if(d.on.i>=0){ if(!selSet.has(st.notes[d.on.i])) clearSel(); select(d.on.i); playOne(d.on.i); } else { clearSel(); select(-1); seek(d.h0.t); } return; }
   if(d.mode==='group'){ if(d.moved) commit(); return; }
   if(d.mode==='time'){ if(!d.moved){ clearSel(); seek(d.h0.t); } else { if(st.loop[1]-st.loop[0]<0.08){ st.loop=null; showLoop(); clearSel(); seek(d.h0.t); } else { setPos(st.loop[0]); if(pb) startPlay(st.loop[0]); } } return; }
   if(d.moved) commit(); else playOne(st.notes.indexOf(d.n)); });
-cv.addEventListener('pointercancel',()=>{ if(drag) cancelAnimationFrame(drag.raf); drag=null; st.guide=null; draw(); });
+cv.addEventListener('pointercancel',()=>{ if(drag){ cancelAnimationFrame(drag.raf); clearTimeout(drag.timer); } drag=null; st.guide=null; draw(); });
 // double-click empty space: add a note; if another note is sounding at that moment, line up with it (harmony)
 cv.addEventListener('dblclick',e=>{ if(!G) return; const h=hit(e); if(h.y<RULER||noteAt(h).i>=0) return; pushUndo();
   let s,en; const over=st.notes.filter(o=>h.t>=o.start&&h.t<o.end).sort((a,b)=>Math.abs(a.pitch-h.p)-Math.abs(b.pitch-h.p));
@@ -1285,16 +1306,21 @@ seg('segTs','ts',()=>drawScore());
 $('scoreAll').addEventListener('click',()=>{ SC.all=!SC.all; drawScore(); });
 // chord picker: the key's own chords first, then any major/minor chord, then "let it choose"
 function chordOf(root,q){ const iv=q==='m'?[0,3,7]:q==='dim'?[0,3,6]:q==='7'?[0,4,7,10]:[0,4,7]; return {root,pcs:iv.map(x=>(x+root)%12),label:Hum.FLATS[root]+(q==='m'?'m':q==='dim'?'°':q==='7'?'7':''),nm:q==='m'?'x':'X'}; }
-function openChordPop(u0,el){ const sc=scoreScale(); if(!sc) return; const P=$('chordPop'), Q=sc.minor?['m','dim','','m','m','','']:['','m','m','','','m','dim'];
+function openChordPop(u0,el){ const sc=scoreScale(); if(!sc) return; chordPick=null; const P=$('chordPop'), Q=sc.minor?['m','dim','','m','m','','']:['','m','m','','','m','dim'];
   const steps=sc.minor?[0,2,3,5,7,8,10]:[0,2,4,5,7,9,11], key=steps.map((st2,i)=>chordOf((sc.tonic+st2)%12,Q[i]));
   if(sc.minor) key.push(chordOf((sc.tonic+7)%12,'')); key.push(chordOf((sc.tonic+7)%12,'7'));
   const all=[]; for(let r=0;r<12;r++) for(const q of ['','m']) all.push(chordOf(r,q));
   const btn=c=>`<button type="button" data-ch='${JSON.stringify(c)}'>${c.label}</button>`;
-  P.innerHTML=`<small>Chord for this spot</small><div class="row">${key.map(btn).join('')}</div><details><summary class="q" style="min-height:30px;font-size:13px">Other chords</summary><div class="row">${all.map(btn).join('')}</div></details><div class="row"><button type="button" data-auto="1" class="q">↺ Let it choose</button><button type="button" data-reset="1" class="q">Reset all chords</button></div>`;
+  P.innerHTML=`<small>Chord for this spot</small><div class="row">${key.map(btn).join('')}</div><details><summary class="q" style="min-height:30px;font-size:13px">Other chords</summary><div class="row">${all.map(btn).join('')}</div></details><div class="row pickRow"><button type="button" data-select="1" class="primary" disabled>Select</button><span class="pickN">Tap a chord to hear it</span></div><div class="row"><button type="button" data-auto="1" class="q">↺ Let it choose</button><button type="button" data-reset="1" class="q">Reset all chords</button></div>`;
   P.hidden=false; const r=el.getBoundingClientRect(); P.style.left=Math.min(innerWidth-350,Math.max(8,r.left-10))+'px'; P.style.top=Math.min(innerHeight-260,r.bottom+6)+'px'; P.dataset.u0=u0; }
 $('scoreSvg').addEventListener('click',e=>{ const t=e.target.closest('[data-cu]'); if(!t) return; e.stopPropagation(); openChordPop(+t.dataset.cu,t); });
-$('chordPop').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return; const u0=+$('chordPop').dataset.u0; st.chordOver=st.chordOver||{};
-  if(b.dataset.ch) st.chordOver[u0]=JSON.parse(b.dataset.ch); else if(b.dataset.auto) delete st.chordOver[u0]; else if(b.dataset.reset) st.chordOver={}; else return;
+// tap a chord to hear it (tap others to compare), then Select to use the one you like
+let chordPick=null, chordHeld=[];
+function hearChord(c){ chordHeld.forEach(p=>pianoOff(p,true)); const ps=[48+c.root,...c.pcs.map(pc=>{ let p=60+((pc-c.root+12)%12)+c.root; while(p>=72) p-=12; while(p<55) p+=12; return p; })];
+  chordHeld=[...new Set(ps)]; chordHeld.forEach(p=>pianoOn(p,70)); const mine=chordHeld; setTimeout(()=>{ if(chordHeld===mine){ mine.forEach(p=>pianoOff(p,false)); chordHeld=[]; } },1400); }
+$('chordPop').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return; const P=$('chordPop'), u0=+P.dataset.u0; st.chordOver=st.chordOver||{};
+  if(b.dataset.ch){ chordPick=JSON.parse(b.dataset.ch); hearChord(chordPick); P.querySelectorAll('[data-ch]').forEach(x=>x.classList.toggle('picked',x===b)); P.querySelector('[data-select]').disabled=false; P.querySelector('.pickN').textContent=`${chordPick.label}: Select to use it`; return; }
+  if(b.dataset.select){ if(!chordPick) return; st.chordOver[u0]=chordPick; chordPick=null; } else if(b.dataset.auto) delete st.chordOver[u0]; else if(b.dataset.reset) st.chordOver={}; else return;
   $('chordPop').hidden=true; stopScore(); drawScore(); });
 document.addEventListener('pointerdown',e=>{ const P=$('chordPop'); if(!P.hidden&&!P.contains(e.target)&&!e.target.closest('[data-cu]')) P.hidden=true; });
 $('scClean').addEventListener('click',()=>{ st.scoreClean=!st.scoreClean; $('scClean').setAttribute('aria-pressed',st.scoreClean); $('scApply').hidden=!st.scoreClean; stopScore(); drawScore(); });
@@ -1522,24 +1548,33 @@ const serverReady=(async()=>{ if(!/^https?:$/.test(location.protocol)) return fa
 if(location.protocol==='file:') fetch('http://127.0.0.1:8765/api/ping',{mode:'no-cors'}).then(()=>location.replace('http://127.0.0.1:8765/')).catch(()=>{});
 const stamp=()=>{ const d=new Date(),p=v=>String(v).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`; };
 function idb(){ return new Promise((res,rej)=>{ const r=indexedDB.open('hum2midi',1); r.onupgradeneeded=()=>r.result.createObjectStore('kv'); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
+async function kvDel(k){ try{ const db=await idb(); return await new Promise((res,rej)=>{ const r=db.transaction('kv','readwrite').objectStore('kv').delete(k); r.onsuccess=()=>res(); r.onerror=()=>rej(r.error); }); }catch(e){} }
+async function kvKeys(){ try{ const db=await idb(); return await new Promise((res,rej)=>{ const r=db.transaction('kv','readonly').objectStore('kv').getAllKeys(); r.onsuccess=()=>res(r.result||[]); r.onerror=()=>rej(r.error); }); }catch(e){ return []; } }
+// no PC helper and no folder chosen: takes live inside Humnote (this browser's storage on this device)
+const APP=()=>!SERVER&&!dir;
 async function kv(k,v){ try{ const db=await idb(); return await new Promise((res,rej)=>{ const tx=db.transaction('kv',v===undefined?'readonly':'readwrite'), os=tx.objectStore('kv'); const r=v===undefined?os.get(k):os.put(v,k); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }catch(e){ return null; } }
 async function initFolder(){ if(await serverReady){ $('pick').hidden=true; $('folderS').textContent='Takes save straight into the “recordings” folder.'; listTakes(); return; }
-  if(!window.showDirectoryPicker){ $('pick').hidden=true; $('folderS').textContent='This browser can’t write to a folder — takes go to Downloads.'; return; }
-  const h=await kv('dir'); if(h){ dir=h; $('folderS').textContent=`Saving to “${h.name}” (click a button below to reconnect if asked).`; const ok=await h.queryPermission({mode:'readwrite'}); if(ok==='granted') listTakes(); else $('takes').innerHTML='<li><button type="button" id="reconn">Reconnect to “'+esc(h.name)+'”</button></li>'; } }
+  if(!window.showDirectoryPicker){ $('pick').hidden=true; $('folderS').textContent='Takes are kept inside Humnote on this device.'; listTakes(); return; }
+  const h=await kv('dir'); if(!h) listTakes(); if(h){ dir=h; $('folderS').textContent=`Saving to “${h.name}” (click a button below to reconnect if asked).`; const ok=await h.queryPermission({mode:'readwrite'}); if(ok==='granted') listTakes(); else $('takes').innerHTML='<li><button type="button" id="reconn">Reconnect to “'+esc(h.name)+'”</button></li>'; } }
 const esc=t=>String(t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 async function ensureDir(){ if(!dir) return false; let p=await dir.queryPermission({mode:'readwrite'}); if(p!=='granted') p=await dir.requestPermission({mode:'readwrite'}); return p==='granted'; }
 $('pick').addEventListener('click',async()=>{ try{ dir=await showDirectoryPicker({id:'hum2midi',mode:'readwrite'}); await kv('dir',dir); $('folderS').textContent=`Saving to “${dir.name}”.`; listTakes(); }catch(e){} });
 $('takes').addEventListener('click',async e=>{ const b=e.target.closest('button'); if(!b) return;
   if(b.id==='reconn'){ if(await ensureDir()){ $('folderS').textContent=`Saving to “${dir.name}”.`; listTakes(); } return; }
-  try{ const f=SERVER?await (await fetch('recordings/'+encodeURIComponent(b.dataset.f),{cache:'no-store'})).blob():await (await dir.getFileHandle(b.dataset.f)).getFile(); curName=b.dataset.f.replace(/\.[^.]+$/,''); curFile=b.dataset.f; $('status').textContent='Decoding…'; const buf=await ac().decodeAudioData(await f.arrayBuffer()); await run(buf,false); await loadEdits(); showTakeBar(); $('status').textContent=`Loaded ${b.dataset.f}`; }catch(err){ toast('Could not open that take'); } });
+  try{ const f=SERVER?await (await fetch('recordings/'+encodeURIComponent(b.dataset.f),{cache:'no-store'})).blob():APP()?await kv('f:'+b.dataset.f):await (await dir.getFileHandle(b.dataset.f)).getFile(); curName=b.dataset.f.replace(/\.[^.]+$/,''); curFile=b.dataset.f; $('status').textContent='Decoding…'; const buf=await ac().decodeAudioData(await f.arrayBuffer()); await run(buf,false); await loadEdits(); showTakeBar(); $('status').textContent=`Loaded ${b.dataset.f}`; }catch(err){ toast('Could not open that take'); } });
 async function listTakes(){ if(SERVER){ try{ const items=await (await fetch('api/takes',{cache:'no-store'})).json(); showTakes(items); }catch(e){} return; }
+  if(APP()){ const ks=(await kvKeys()).filter(k=>typeof k==='string'&&/^f:.*\.(wav|m4a|mp3|ogg|webm|aac|flac)$/i.test(k)).map(k=>k.slice(2)); ks.sort().reverse(); showTakes(ks); return; }
   if(!dir) return; const items=[]; try{ for await(const [n,h] of dir.entries()) if(h.kind==='file'&&/\.(wav|m4a|mp3|ogg|webm|aac|flac)$/i.test(n)) items.push(n); }catch(e){ return; }
   items.sort().reverse(); showTakes(items); }
 function showTakes(items){ $('takes').innerHTML=items.length?items.map(n=>`<li><button type="button" data-f="${esc(n)}">${esc(n)}</button></li>`).join(''):'<li class="status">No takes saved yet.</li>'; }
 async function writeFile(name,data){
   if(SERVER){ const r=await fetch('api/save?name='+encodeURIComponent(name),{method:'POST',body:data instanceof Blob?data:new Blob([data])}); if(!r.ok) throw new Error('save failed'); return 'folder'; }
   if(dir&&await ensureDir().catch(()=>false)){ const fh=await dir.getFileHandle(name,{create:true}); const w=await fh.createWritable(); await w.write(data); await w.close(); return 'folder'; }
-  const a=document.createElement('a'); a.href=URL.createObjectURL(data instanceof Blob?data:new Blob([data])); a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),4000); return 'downloads'; }
+  const blob=data instanceof Blob?data:new Blob([data]);
+  if(!/\.mid$/i.test(name)){ await kv('f:'+name,blob); return 'app'; }
+  // a MIDI file on a phone: the share sheet (save to Files, send it…) instead of a download
+  try{ const file=new File([blob],name,{type:'audio/midi'}); if(navigator.canShare&&navigator.canShare({files:[file]})&&matchMedia('(pointer:coarse)').matches){ await navigator.share({files:[file],title:name}); return 'shared'; } }catch(e){ if(e&&e.name==='AbortError') return 'shared'; }
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),4000); return 'downloads'; }
 function wav(buffer){ const ch=buffer.getChannelData(0), sr=buffer.sampleRate, n=ch.length, b=new ArrayBuffer(44+n*2), v=new DataView(b);
   const S=(o,t)=>{ for(let i=0;i<t.length;i++) v.setUint8(o+i,t.charCodeAt(i)); };
   S(0,'RIFF'); v.setUint32(4,36+n*2,true); S(8,'WAVE'); S(12,'fmt '); v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true); v.setUint32(24,sr,true); v.setUint32(28,sr*2,true); v.setUint16(32,2,true); v.setUint16(34,16,true); S(36,'data'); v.setUint32(40,n*2,true);
@@ -1549,17 +1584,17 @@ function notesJson(){ const k=st.res&&st.res.key; return JSON.stringify({take:cu
   settings:{snapToKey:st.key,stickiness:st.stick,transpose:st.tr}, tempo:st.tempo?{bpm:+st.tempo.bpm.toFixed(2),firstBeat:+st.tempo.phase.toFixed(3)}:null, edited:st.edited,
   notes:st.notes.map(noteOut), ...(st.edited&&st.detected?{detected:st.detected.map(noteOut)}:{})},null,1); }
 async function saveTake(blob,ext,name){ curName=name||'hum_'+stamp(); curFile=curName+'.'+ext; try{ const where=await writeFile(curName+'.'+ext,blob); showTakeBar(); await writeFile(curName+'.json',new Blob([notesJson()],{type:'application/json'}));
-  toast(where==='folder'?`Saved ${curName}.${ext} + notes to “${SERVER?'recordings':dir.name}”`:`Saved ${curName}.${ext} to Downloads — choose a save folder to keep takes together`); listTakes(); }catch(e){ toast('Could not save the take'); } }
+  toast(where==='folder'?`Saved ${curName}.${ext} + notes to “${SERVER?'recordings':dir.name}”`:`Saved ${curName} in Humnote on this device`); listTakes(); }catch(e){ toast('Could not save the take'); } }
 // re-open your corrections when you load a saved take
-async function loadEdits(){ try{ if(!curName||(!dir&&!SERVER)) return; const txt=SERVER?await (await fetch('recordings/'+encodeURIComponent(curName+'.json'),{cache:'no-store'})).text():await (await (await dir.getFileHandle(curName+'.json')).getFile()).text(); const j=JSON.parse(txt); if(j.tempo&&j.tempo.bpm&&!j.edited){ const b=60/j.tempo.bpm; st.tempo={bpm:j.tempo.bpm,beat:b,phase:j.tempo.firstBeat||0,conf:1}; render(); }
+async function loadEdits(){ try{ if(!curName) return; const txt=SERVER?await (await fetch('recordings/'+encodeURIComponent(curName+'.json'),{cache:'no-store'})).text():APP()?await (await kv('f:'+curName+'.json')).text():await (await (await dir.getFileHandle(curName+'.json')).getFile()).text(); const j=JSON.parse(txt); if(j.tempo&&j.tempo.bpm&&!j.edited){ const b=60/j.tempo.bpm; st.tempo={bpm:j.tempo.bpm,beat:b,phase:j.tempo.firstBeat||0,conf:1}; render(); }
   if(!j.edited||!Array.isArray(j.notes)) return;
   st.notes=j.notes.map(o=>({pitch:o.midi-(j.settings?.transpose||0),start:o.start,end:o.end,vel:o.velocity||80,rel:o.centsVsYourTuning||0,cents:o.centsVsA440||0,ed:o.edited?1:0,...(o.vibrato?{vib:{rate:o.vibrato.rate,depth:o.vibrato.swing,curve:o.vibrato.curve}}:{}),...(o.vibratoOff?{vibOff:1}:{})})); if(j.tempo&&j.tempo.bpm){ const b=60/j.tempo.bpm; st.tempo={bpm:j.tempo.bpm,beat:b,phase:j.tempo.firstBeat||0,conf:1}; } st.edited=true; render(); toast('Loaded your edited notes'); }catch(e){} }
 // re-save the notes .json whenever settings or edits change the result
-let rsT=0; const resave=()=>{ if(curName&&(dir||SERVER)) writeFile(curName+'.json',new Blob([notesJson()],{type:'application/json'})).catch(()=>{}); };
+let rsT=0; const resave=()=>{ if(curName) writeFile(curName+'.json',new Blob([notesJson()],{type:'application/json'})).catch(()=>{}); };
 const resaveSoon=()=>{ clearTimeout(rsT); rsT=setTimeout(resave,700); };
 ['segKey','segStick','segTr'].forEach(id=>$(id).addEventListener('click',()=>setTimeout(resave,50)));
 $('saveMid').addEventListener('click',async()=>{ if(!st.notes.length){ toast('No notes to save yet'); return; } const nm=(curName||'hum_'+stamp())+'.mid';
-  try{ const where=await writeFile(nm,new Blob([midiBytes()],{type:'audio/midi'})); toast(`Saved ${nm}`+(where==='folder'?` to “${SERVER?'recordings':dir.name}”`:' to Downloads')); }catch(e){ toast('Could not save'); } });
+  try{ const where=await writeFile(nm,new Blob([midiBytes()],{type:'audio/midi'})); if(where!=='shared') toast(`Saved ${nm}`+(where==='folder'?` to “${SERVER?'recordings':dir.name}”`:' to Downloads')); }catch(e){ toast('Could not save'); } });
 
 // ===== recording + live tuner =====
 // raw PCM, no browser processing (it bends pitch and gates quiet notes)
@@ -1696,12 +1731,13 @@ function drawWave(r){ const cv=$('tCv'), w=cv.clientWidth, h=cv.clientHeight; if
   c.lineJoin='round'; c.lineCap='round'; c.save(); c.shadowColor='#ff7a1a'; c.shadowBlur=18; c.strokeStyle='rgba(255,122,26,.55)'; c.lineWidth=5; path(); c.stroke(); c.restore();
   c.strokeStyle='#ff9a4d'; c.lineWidth=2.5; path(); c.stroke(); }
 // ---- take bar: delete a take, or record over it
-function showTakeBar(){ const on=!!(curName&&curFile&&(SERVER||dir)&&!(rec&&rec.recording)); $('takeBar').hidden=!on; if(on) $('takeName').textContent=curFile; }
+function showTakeBar(){ const on=!!(curName&&curFile&&!(rec&&rec.recording)); $('takeBar').hidden=!on; if(on) $('takeName').textContent=curFile; }
 async function removeFiles(base,only){ // only = exact file name; otherwise every file of that take (audio, notes, MIDI)
   if(SERVER){ const r=await fetch('api/delete?'+(only?'name='+encodeURIComponent(only):'base='+encodeURIComponent(base)),{method:'POST'}); if(!r.ok) throw new Error('delete failed'); return; }
+  if(APP()){ for(const k of await kvKeys()){ if(typeof k!=='string'||!k.startsWith('f:')) continue; const n=k.slice(2); if(only?n===only:n.replace(/\.[^.]+$/,'')===base) await kvDel(k); } return; }
   if(dir&&await ensureDir()){ for await(const [n,h] of dir.entries()){ if(h.kind!=='file') continue; if(only?n===only:n.replace(/\.[^.]+$/,'')===base&&/\.(wav|m4a|mp3|ogg|webm|aac|flac|json|mid)$/i.test(n)) await dir.removeEntry(n); } } }
 $('delTake').addEventListener('click',async()=>{ if(!curName||(rec&&rec.recording)) return;
-  if(!confirm(`Delete “${curFile}” and its notes from the recordings folder?\n\nThis can't be undone.`)) return;
+  if(!confirm(`Delete “${curFile}” and its notes${APP()?' from Humnote':' from the recordings folder'}?\n\nThis can't be undone.`)) return;
   try{ await removeFiles(curName); toast(`Deleted ${curName}`); $('status').textContent='Deleted — the notes on screen are no longer saved anywhere.'; curName=null; curFile=null; showTakeBar(); listTakes(); }
   catch(e){ toast('Could not delete that take'); } });
 $('redo').addEventListener('click',()=>{ if(curName&&!(rec&&rec.recording)) startRec({base:curName,file:curFile}); });
