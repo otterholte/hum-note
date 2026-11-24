@@ -147,6 +147,18 @@ canvas{display:block}
 .recArea .tunerOpts{flex-direction:column;align-items:flex-start;gap:8px;padding:8px;margin-top:4px}
 .recArea .tSet{flex-wrap:wrap}.recArea .tunerOpts .seg button{min-height:30px;padding:0 8px;font-size:13px}
 @media(max-width:760px){.recArea{flex-direction:column}.recArea .tuner{flex:none;width:auto}}
+/* warm-up: sits at the top of the tuner panel */
+.wu{width:100%;border:1px solid #3a2a1c;background:#16120e;border-radius:14px;padding:12px 14px;margin-bottom:8px}
+.wuTop{display:flex;justify-content:space-between;align-items:center;gap:10px;color:#ffd2b0;font-size:15px}
+.wuDots{display:flex;gap:5px}.wuDots i{width:9px;height:9px;border-radius:50%;background:#3a3b44}.wuDots i.on{background:var(--neon)}.wuDots i.done{background:var(--good)}
+.wuSay{margin:8px 0;font:700 20px/1.25 'Familjen Grotesk',Inter,sans-serif;color:var(--tink)}
+.wuBar{height:8px;border-radius:5px;background:#24252c;overflow:hidden}.wuBar i{display:block;height:100%;width:0;background:var(--good);transition:width .12s}
+.wuHint{margin:8px 0 0;color:var(--tmute);font-size:14px;min-height:1.4em}
+.wuRes{margin:10px 0 0;padding-left:18px;color:var(--tink);font-size:14px;line-height:1.5}.wuRes li{margin:2px 0}.wuRes b{color:#ffd2b0}
+.wuBtns{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.wuBtns button{min-height:36px;font-size:14px;background:#15161b;color:var(--tink);border-color:var(--tline)}
+.wuBtns button.primary{background:var(--acc);border-color:var(--acc);color:#fff}
+.recArea .wuSay{font-size:16px}.recArea .tuner:has(.wu:not([hidden])){flex-basis:340px;width:340px}
+@media(max-width:760px){.recArea .tuner:has(.wu:not([hidden])){width:auto}}
 
 #toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90vw}
 #toast.show{opacity:1}
@@ -200,6 +212,7 @@ button.q,label.q{background:transparent;border-color:transparent}button.q:hover,
 <div class="load recBar">
   <button id="rec" type="button" class="recbtn"><span class="dot"></span><span id="recT">Record</span></button>
   <button id="listen" type="button" title="Tuner and click on, without recording — find your note first">🎧 Listen</button>
+  <button id="wuB" type="button" class="q" title="About 15 seconds: Humnote learns your range, your tuning and how you sing syllables">Warm up</button>
   <button id="recPause" type="button" hidden>❚❚ Pause</button>
   <button id="recCancel" type="button" hidden>✕ Cancel</button>
   <label class="hearL" id="metL" title="A click in your headphones while you listen and record; the take then uses this exact tempo"><input type="checkbox" id="metro"> Click <input type="number" id="metBpm" min="40" max="240" step="1" value="100" aria-label="Click tempo in BPM"> BPM</label>
@@ -214,6 +227,14 @@ button.q,label.q{background:transparent;border-color:transparent}button.q:hover,
 
 <div class="recArea">
   <div class="tuner" id="tuner" hidden>
+    <div class="wu" id="wu" hidden aria-live="polite">
+      <div class="wuTop"><b id="wuTitle">Warm-up</b><span class="wuDots" id="wuDots"></span></div>
+      <p class="wuSay" id="wuSay"></p>
+      <div class="wuBar"><i id="wuBar"></i></div>
+      <p class="wuHint" id="wuHint"></p>
+      <ul class="wuRes" id="wuRes" hidden></ul>
+      <div class="wuBtns"><button type="button" id="wuGo" class="primary" hidden>&#9679; Start recording</button><button type="button" id="wuSkip">Skip</button><button type="button" id="wuAgain" hidden>Do it again</button></div>
+    </div>
     <div class="tn quiet" id="tn"><b id="tNote">–</b><span id="tHz">&nbsp;</span></div>
     <svg id="tArc" viewBox="0 0 600 214" aria-hidden="true"></svg>
     <div class="tCents" id="tCents">&nbsp;</div>
@@ -558,6 +579,8 @@ const Hum = (() => {
         out.push(o); }
       kept=out;
     }
+    // your range (from the warm-up): a note well outside it that fits an octave away was the tracker locking onto an overtone
+    if(opt.range){ const [rl,rh]=opt.range; for(const o of kept){ if(o.pitch>rh&&o.pitch-12>=rl){ o.pitch-=12; o.oct=(o.oct||0)-12; } else if(o.pitch<rl&&o.pitch+12<=rh){ o.pitch+=12; o.oct=(o.oct||0)+12; } } }
     // octave slips: a note an octave away from BOTH neighbours, which fits if moved, was a tracker error
     for(let k=0;k<kept.length;k++){ const o=kept[k], p=kept[k-1], q=kept[k+1]; if(!p&&!q) continue;
       const nb=[p,q].filter(Boolean).map(x=>x.pitch), far=d=>nb.every(v=>Math.abs(o.pitch+d-v)<=7);
@@ -798,7 +821,8 @@ const Hum = (() => {
     for(let i=0;i<F.n;i++){ let o; if(i<=pts[0][0]) o=pts[0][1]; else if(i>=pts[pts.length-1][0]) o=pts[pts.length-1][1]; else { let k=0; while(pts[k+1][0]<i) k++; const [a,x]=pts[k],[b,y]=pts[k+1]; o=x+(y-x)*(i-a)/(b-a); } tune.curve[i]+=o; } }
   // keep note names on the nearest standard (A440) semitone: if the singer's tuning estimate has wandered
   // more than half a semitone away overall, shift the grid by one semitone (and the key with it)
-  function recenter(tune,key){ const c=tune.curve; if(!c.length) return key; let s=0; for(let i=0;i<c.length;i++) s+=c[i]; const mean=s/c.length; const sh=mean>0.5?-1:mean<-0.5?1:0; if(!sh) return key;
+  // prior = the singer's usual tuning from their warm-up (semitones; 0 = standard A440)
+  function recenter(tune,key,prior){ const c=tune.curve; if(!c.length) return key; let s=0; for(let i=0;i<c.length;i++) s+=c[i]; const mean=s/c.length-(prior||0); const sh=mean>0.5?-1:mean<-0.5?1:0; if(!sh) return key;
     for(let i=0;i<c.length;i++) c[i]+=sh; if(!key) return key; const t=((key.tonic-sh)%12+12)%12; return {...key,tonic:t,scale:(key.mode==='major'?SC_MAJ:SC_MIN).map(i=>(i+t)%12),name:FLATS[t]+' '+key.mode}; }
   // the key that makes the most musical sense once drift is allowed for (every key is tried)
   function driftKey(notes){ if(notes.length<4) return null; let best=null;
@@ -932,13 +956,14 @@ async function run(buffer,isDemo){
 function redecode(fresh){
   if(!st.F) return;
   if(st.edited&&!fresh){ pushUndo(); toast('Notes re-detected with the new setting — Undo brings your edits back'); }
-  const F=st.F; const opt={keyStrength:st.key,keyMode:st.key===0?'off':'on',switchCost:st.stick};
+  const F=st.F, VP=voiceProfile(); const opt={keyStrength:st.key,keyMode:st.key===0?'off':'on',switchCost:st.stick,...(VP&&VP.low!=null&&VP.high!=null?{range:[VP.low-3,VP.high+3]}:{})};
+  Hum.HP.veto=VP&&VP.rise!=null&&VP.rise<5.5?Math.max(1.2,0.45*VP.rise):HP0.veto; // gentle syllables -> trust smaller rises
   // same pipeline as Hum.transcribe, starting from frames
   const tune=Hum.tuningCurve(F); let notes=Hum.decode(F,tune,null,opt), key=null;
   if(notes.length>=3){ key=Hum.detectKey(notes); if(st.key>0) notes=Hum.decode(F,tune,key,opt); key=Hum.detectKey(notes); }
   if(notes.length>=4) Hum.refine(F,tune,notes);
   notes=Hum.decode(F,tune,st.key>0?key:null,{...opt,shape:1});
-  if(st.drift!=='off'&&st.key>0&&notes.length>=4){ const k2=Hum.driftKey(notes)||key; Hum.applyDrift(F,tune,Hum.followDrift(Hum.decode(F,tune,k2,{...opt,shape:1}),k2)); key=Hum.recenter(tune,k2); notes=Hum.decode(F,tune,key,{...opt,shape:1}); }
+  if(st.drift!=='off'&&st.key>0&&notes.length>=4){ const k2=Hum.driftKey(notes)||key; Hum.applyDrift(F,tune,Hum.followDrift(Hum.decode(F,tune,k2,{...opt,shape:1}),k2)); key=Hum.recenter(tune,k2,VP&&VP.offset!=null?VP.offset/100:0); notes=Hum.decode(F,tune,key,{...opt,shape:1}); }
   addVib(notes); st.chordOver={}; st.res={tune,key}; st.notes=notes; st.detected=notes.map(n=>({...n})); st.edited=false; st.sel=-1; st.tempo=Hum.tempo(notes); qSess=null; render();
 }
 
@@ -1652,6 +1677,7 @@ function tunerLoop(){ if(!rec) return; const r=rec, now=performance.now(), dt=Ma
     tn.classList.remove('quiet'); tu.classList.remove('quiet'); }
   else if(now-(r.lastV||0)>350){ tn.classList.add('quiet'); tu.classList.add('quiet'); }
   if(guideOn){ if(!r.gd) guideStart(r); guideFollow(r); }
+  if(WU.on===true) wuTick(r,m,steady,now,dt);
   drawTrace(r); r.raf=requestAnimationFrame(tunerLoop); }
 // a calm glowing wave that swells with how loud the mic is, just to show it hears you (flat when silent)
 function drawTrace(r){ if(st.trace==='on'){ drawPitchTrace(r); return; } drawWave(r); }
@@ -1679,7 +1705,7 @@ $('delTake').addEventListener('click',async()=>{ if(!curName||(rec&&rec.recordin
   try{ await removeFiles(curName); toast(`Deleted ${curName}`); $('status').textContent='Deleted — the notes on screen are no longer saved anywhere.'; curName=null; curFile=null; showTakeBar(); listTakes(); }
   catch(e){ toast('Could not delete that take'); } });
 $('redo').addEventListener('click',()=>{ if(curName&&!(rec&&rec.recording)) startRec({base:curName,file:curFile}); });
-$('rec').addEventListener('click',()=>{ if(rec&&rec.recording) stopRec(false); else startRec(null); });
+$('rec').addEventListener('click',()=>{ if(rec&&rec.recording) stopRec(false); else if(WU.on==='done') wuFinish(true); else if(WU.on) return; else if(!voiceProfile()) startWarmup('full'); else if(wuWant()) startWarmup('quick'); else startRec(null); });
 $('recPause').addEventListener('click',()=>{ if(!rec||!rec.recording) return; const r=rec; r.paused=!r.paused;
   if(r.paused){ r.acc+=performance.now()-r.since; $('recPause').textContent='▶ Resume'; $('status').textContent='Paused — Resume to keep going, Stop to save, Cancel to throw it away.'; $('lvl').style.width='0%'; }
   else { r.since=performance.now(); $('recPause').textContent='❚❚ Pause'; $('status').textContent=r.replace?`Recording over ${r.replace.base} — Stop replaces it, Cancel keeps the original.`:'Recording — sing, then press Stop.'; } });
@@ -1737,6 +1763,7 @@ async function openLive(keep){ if(rec) return rec; stopPlay(); micTest(false); c
   tunerReset();
   proc.onaudioprocess=e=>{ const d=e.inputBuffer.getChannelData(0); let pk=0;
     for(let i=0;i<d.length;i++){ ring[R.w]=d[i]; R.w=(R.w+1)%ring.length; const a=Math.abs(d[i]); if(a>pk) pk=a; } $('lvl').style.width=Math.min(100,pk*140)+'%';
+    if(R.wuCap) R.wuCap.push(new Float32Array(d));
     if(!R.recording) return; if(R.firstT==null) R.firstT=e.playbackTime-2*e.inputBuffer.length/ctx.sampleRate; if(R.paused){ R.wasPaused=true; return; } R.chunks.push(new Float32Array(d)); };
   src.connect(proc); proc.connect(mute); mute.connect(ctx.destination);
   rec=R; swiftStart(); $('tuner').hidden=false; R.raf=requestAnimationFrame(tunerLoop);
@@ -1809,6 +1836,84 @@ async function stopRec(discard){ const r=rec; if(!r||!r.recording) return; r.rec
     try{ if(r.replace.file&&r.replace.file!==base+'.wav') await removeFiles(base,r.replace.file); await removeFiles(base,base+'.mid').catch(()=>{}); }catch(e){}
     listTakes(); toast(`Recorded over ${base} — the old version is gone`); }
   else await saveTake(wav(buf),'wav'); }
+// ===== voice warm-up =====
+// First take: about 15 s. Hold a comfortable note in tune, then your lowest and highest comfortable notes, then
+// "da da da da" back on the first note. Later takes: a quick 2-note check (skippable). Humnote then knows
+//  - your tuning (so note names line up with how you actually sing),
+//  - your range (a note far outside it is the tracker locking onto an overtone, not you),
+//  - how crisp your syllables are (so it knows how big a "d" it needs to hear to split a repeated note).
+const VP_KEY='hum2midi_voice', HP0={...Hum.HP};
+function voiceProfile(){ try{ return JSON.parse(localStorage.getItem(VP_KEY)||'null'); }catch(e){ return null; } }
+function saveProfile(p){ try{ localStorage.setItem(VP_KEY,JSON.stringify(p)); }catch(e){} }
+const wuWant=()=>{ try{ return localStorage.getItem('hum2midi_wuQuick')!=='off'; }catch(e){ return true; } };
+const WU={on:false};
+const WU_STEPS={
+  mid:{say:'Sing a comfortable note on “ah” and hold it in the green',need:1.6,max:9},
+  low:{say:'Now slide down to your lowest comfortable note and hold it',need:1.1,max:8},
+  high:{say:'Now your highest comfortable note (no straining)',need:1.1,max:8},
+  da:{say:'Back to your first note: “da da da da”, a clear “d” each time',need:3.5,max:7,syll:true},
+  up:{say:'Now a higher note, a few steps up, and hold it in the green',need:1.1,max:8}};
+const wuName=p=>Hum.flatName(p);
+async function startWarmup(mode){ try{ const had=!!rec; const R=rec||await openLive(false); if(!had) R.keep=false;
+    Object.assign(WU,{on:true,mode,steps:mode==='full'?['mid','low','high','da']:['mid','up'],i:-1,res:{},prof:{...(voiceProfile()||{})}});
+    $('wu').hidden=false; $('wuRes').hidden=true; $('wuGo').hidden=true; $('wuAgain').hidden=true;
+    $('wuSkip').hidden=mode==='full'&&!voiceProfile(); $('wuSkip').textContent=mode==='full'?'Skip':'Skip, record now';
+    $('wuTitle').textContent=mode==='full'?'Warm-up · about 15 s':'Quick check · 2 notes';
+    $('wuDots').innerHTML=WU.steps.map(()=>'<i></i>').join(''); wuNext();
+    $('status').textContent=mode==='full'?'Warm-up: follow the steps in the tuner.':'Quick check: two notes, then record.';
+  }catch(e){ toast('Microphone blocked: allow it and try again'); WU.on=false; } }
+function wuNext(){ const r=rec; WU.i++; [...$('wuDots').children].forEach((d,k)=>{ d.className=k<WU.i?'done':k===WU.i?'on':''; });
+  if(WU.i>=WU.steps.length){ wuDone(); return; }
+  const id=WU.steps[WU.i], S=WU_STEPS[id]; Object.assign(WU,{id,S,t0:performance.now(),hold:0,samp:[],ref:null});
+  $('wuSay').textContent=S.say; $('wuBar').style.width='0%'; $('wuHint').textContent=id==='da'&&WU.res.mid?`Your first note was ${wuName(WU.res.mid.p)}.`:'';
+  if(r) r.wuCap=S.syll?[]:null; }
+function wuTick(r,m,steady,now,dt){ const S=WU.S; if(!S) return; const el=(now-WU.t0)/1000;
+  if(S.syll){ $('wuBar').style.width=Math.min(100,100*el/S.need)+'%'; if(el>=S.need&&(isNaN(m)||el>=S.max)) wuSyll(); return; }
+  // a held note: steady, in the right direction, and (for the first note) within ±25 cents of a semitone
+  let good=false; if(!isNaN(m)&&steady&&r.me!=null){ const c=100*(r.me-Math.round(r.me));
+    if(WU.ref!=null&&Math.abs(r.me-WU.ref)>0.8){ WU.samp=[]; WU.hold=0; WU.ref=null; }
+    if(WU.ref==null) WU.ref=r.me;
+    const mid=WU.res.mid, okDir=WU.id==='low'?(!mid||r.me<mid.m-1.5):(WU.id==='high'||WU.id==='up')?(!mid||r.me>mid.m+1.5):true;
+    const inTune=(WU.id!=='mid'&&WU.id!=='up')||Math.abs(c)<=25;
+    if(!okDir) $('wuHint').textContent=WU.id==='low'?'Go a bit lower than your first note':'Go a bit higher than your first note';
+    else if(!inTune) $('wuHint').textContent=c>0?'A little sharp: come down until the tuner turns green':'A little flat: come up until the tuner turns green';
+    else { $('wuHint').textContent='Good, keep holding'; good=true; } }
+  if(good){ WU.hold+=dt; WU.samp.push(r.me); } else if(isNaN(m)) WU.hold=Math.max(0,WU.hold-dt*0.5);
+  $('wuBar').style.width=Math.min(100,100*WU.hold/S.need)+'%';
+  if(WU.hold>=S.need&&WU.samp.length){ const v=[...WU.samp].sort((a,b)=>a-b), med=v[v.length>>1], p=Math.round(med);
+    let sd=0; WU.samp.forEach(x=>sd+=(x-med)**2); sd=Math.sqrt(sd/WU.samp.length);
+    WU.res[WU.id]={m:med,p,c:Math.round(100*(med-p)),wob:Math.round(100*sd*1.41)}; wuNext(); }
+  else if(el>S.max){ $('wuHint').textContent='Couldn’t hear a steady note, moving on'; wuNext(); } }
+// the "da da da da": find each new syllable and how much louder the voice comes back after its "d"
+async function wuSyll(){ const r=rec, ch=r&&r.wuCap; WU.S=null; if(r) r.wuCap=null;
+  try{ const n=(ch||[]).reduce((s,c)=>s+c.length,0); if(n<r.sr*0.8) throw 0; const buf=ac().createBuffer(1,n,r.sr), d=buf.getChannelData(0); let o=0; ch.forEach(c=>{ d.set(c,o); o+=c.length; });
+    WU.res.da=wuSyllables(Hum.frames(Hum.track(await toMono16k(buf),16000)),WU.res.mid&&WU.res.mid.m);
+  }catch(e){ WU.res.da=null; } wuNext(); }
+function wuSyllables(F,mid){ const ds=F.ds, N=F.n, rises=[];
+  // only the stretch sung on (about) the first note: the end of the previous step's note doesn't count
+  const vo=new Uint8Array(N); for(let i=0;i<N;i++) vo[i]=F.voiced[i]&&(mid==null||Math.abs(F.m[i]-mid)<1.6)?1:0;
+  let a=0; while(a<N&&!vo[a]) a++; let b=N-1; while(b>a&&!vo[b]) b--;
+  for(let i=a+6;i<b-6;i++){ let isMin=true; for(let q=i-6;q<=i+6;q++) if(ds[q]<ds[i]){ isMin=false; break; } if(!isMin) continue;
+    let L=-99,R=-99; for(let q=i-15;q<i-2;q++) if(q>=a) L=Math.max(L,ds[q]); for(let q=i+2;q<i+15;q++) if(q<=b) R=Math.max(R,ds[q]);
+    if(Math.min(L,R)-ds[i]>=2.5){ rises.push(R-ds[i]); i+=12; } }
+  rises.sort((p,q)=>p-q); return {n:rises.length+1,rise:rises.length?rises[rises.length>>1]:0}; }
+function wuDone(){ const R=WU.res, P=WU.prof, L=[]; WU.S=null;
+  if(R.mid){ P.offset=Math.round((P.offset!=null&&WU.mode==='quick')?(0.5*P.offset+0.5*R.mid.c):R.mid.c); P.wobble=R.mid.wob;
+    L.push(`Your note: <b>${wuName(R.mid.p)}</b>, ${Math.abs(R.mid.c)<=5?'right in tune':Math.abs(R.mid.c)+' cents '+(R.mid.c>0?'sharp':'flat')}.`); }
+  if(R.up&&R.mid){ const dc=R.up.c-R.mid.c; L.push(Math.abs(dc)<=20?`Second note <b>${wuName(R.up.p)}</b>: both notes on the same tuning, so you’re on key.`:`Second note <b>${wuName(R.up.p)}</b> was ${Math.abs(dc)} cents ${dc>0?'sharper':'flatter'} than the first. Keep an eye on the tuner while you sing.`); }
+  if(R.low&&R.high){ P.low=R.low.p; P.high=R.high.p; L.push(`Your range: <b>${wuName(P.low)} to ${wuName(P.high)}</b> (${P.high-P.low} semitones). Notes far outside it get checked for overtone mistakes.`); }
+  if(R.mid&&R.mid.wob>=35) L.push(`You held it with a wobble of about ±${R.mid.wob} cents. That’s fine, but for exact notes sing a little straighter.`);
+  if(R.da){ P.rise=Math.round(R.da.rise*10)/10; L.push(R.da.n>=3&&R.da.rise>=5?`Clear syllables (${R.da.n} heard): repeated notes will split cleanly.`:R.da.n>=3?`Soft syllables (${R.da.n} heard): Humnote will listen more closely for repeats. A crisper “d” helps.`:'I could barely hear separate syllables. Use a clear “d” or “t” for repeated notes.'); }
+  const got=Object.keys(R).length>0; P.date=new Date().toISOString().slice(0,10); if(R.mid||R.low) saveProfile(P);
+  $('wuTitle').textContent=got?'Ready':'Warm-up'; $('wuSay').textContent=got?'All set. Here’s what I learned:':'I couldn’t hear enough to learn from. Try again somewhere quieter?';
+  $('wuBar').style.width='100%'; $('wuHint').textContent=''; $('wuRes').innerHTML=L.map(t=>`<li>${t}</li>`).join(''); $('wuRes').hidden=!L.length;
+  $('wuGo').hidden=false; $('wuAgain').hidden=false; $('wuSkip').hidden=false; $('wuSkip').textContent='Close'; WU.on='done';
+  $('status').textContent='Warm-up done. Press Start recording when you’re ready.'; }
+function wuFinish(go){ WU.on=false; WU.S=null; if(rec) rec.wuCap=null; $('wu').hidden=true; if(go) startRec(null); else if(rec&&!rec.keep&&!rec.recording) closeLive(); }
+$('wuGo').addEventListener('click',()=>wuFinish(true));
+$('wuSkip').addEventListener('click',()=>{ if(WU.on==='done'){ wuFinish(false); return; } wuFinish(WU.mode==='quick'); });
+$('wuAgain').addEventListener('click',()=>{ const m=WU.mode; wuFinish(false); setTimeout(()=>startWarmup(m),60); });
+$('wuB').addEventListener('click',()=>{ if(rec&&rec.recording) return; if(WU.on) wuFinish(false); setTimeout(()=>startWarmup('full'),60); });
 run(demoBuffer(),true);
 initFolder();
 }
