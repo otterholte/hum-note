@@ -50,3 +50,5 @@ tools/listen-test/vocx/*
 !tools/listen-test/vocx/index.json
 tools/listen-test/ob_*/
 tools/listen-test/*.log
+tools/listen-test/benchv/
+tools/listen-test/out_benchv/
