@@ -225,6 +225,7 @@ button.q,label.q{background:transparent;border-color:transparent}button.q:hover,
       <div class="seg" id="segRef"><button type="button" data-v="a440">A4 = 440 Hz</button><button type="button" data-v="me">Tune to me</button></div>
       <div class="tSet"><span>Tolerance</span><div class="seg" id="segTol"><button type="button" data-v="5">±5</button><button type="button" data-v="10">±10</button><button type="button" data-v="15">±15</button><button type="button" data-v="20">±20</button></div></div>
       <div class="tSet"><span>Smoothing</span><div class="seg" id="segSmooth"><button type="button" data-v="low">Low</button><button type="button" data-v="med">Medium</button><button type="button" data-v="high">High</button><button type="button" data-v="voice">Voice</button></div></div>
+      <div class="tSet"><span>Pitch detector</span><div class="seg" id="segDet"><button type="button" data-v="ai">AI (SwiftF0)</button><button type="button" data-v="classic">Classic</button></div><span class="status" id="tDetS"></span></div>
       <div class="tSet"><span>Pitch trace</span><div class="seg" id="segTrace"><button type="button" data-v="off">Off</button><button type="button" data-v="on">On</button></div></div>
       <span class="tKey" id="tKey"></span>
       <p class="hint" id="refHint"></p>
@@ -797,9 +798,9 @@ if(typeof module!=='undefined') module.exports=Hum;
 <script>
 {
 const $=id=>document.getElementById(id);
-const st={F:null,buf:null,res:null,notes:[],detected:null,edited:false,key:1,stick:10,tr:0,snd:'piano',hear:'both',ref:'a440',demo:true,pos:0,loop:null,sel:-1,tempo:null,div:2,qs:60,vib:'keep',vibSens:0.7,ts:4,drift:'on',tol:10,smooth:'voice',trace:'off',ver:0,scoreClean:false,scoreChords:false,scoreOct:0};
-try{ const s=JSON.parse(localStorage.getItem('hum2midi')||'{}'); if(!localStorage.getItem('hum2midi_v5')){ delete s.smooth; localStorage.setItem('hum2midi_v5','1'); } ['key','stick','snd','hear','ref','div','qs','vib','vibSens','ts','tol','smooth','trace','drift'].forEach(k=>{ if(s[k]!=null) st[k]=s[k]; }); }catch(e){}
-const saveSet=()=>{ try{ localStorage.setItem('hum2midi',JSON.stringify({key:st.key,stick:st.stick,snd:st.snd,hear:st.hear,ref:st.ref,div:st.div,qs:st.qs,vib:st.vib,vibSens:st.vibSens,ts:st.ts,drift:st.drift,tol:st.tol,smooth:st.smooth,trace:st.trace})); }catch(e){} };
+const st={F:null,buf:null,res:null,notes:[],detected:null,edited:false,key:1,stick:10,tr:0,snd:'piano',hear:'both',ref:'a440',demo:true,pos:0,loop:null,sel:-1,tempo:null,div:2,qs:60,vib:'keep',vibSens:0.7,ts:4,drift:'on',tol:10,smooth:'voice',trace:'off',det:'ai',ver:0,scoreClean:false,scoreChords:false,scoreOct:0};
+try{ const s=JSON.parse(localStorage.getItem('hum2midi')||'{}'); if(!localStorage.getItem('hum2midi_v5')){ delete s.smooth; localStorage.setItem('hum2midi_v5','1'); } ['key','stick','snd','hear','ref','div','qs','vib','vibSens','ts','tol','smooth','trace','drift','det'].forEach(k=>{ if(s[k]!=null) st[k]=s[k]; }); }catch(e){}
+const saveSet=()=>{ try{ localStorage.setItem('hum2midi',JSON.stringify({key:st.key,stick:st.stick,snd:st.snd,hear:st.hear,ref:st.ref,div:st.div,qs:st.qs,vib:st.vib,vibSens:st.vibSens,ts:st.ts,drift:st.drift,tol:st.tol,smooth:st.smooth,trace:st.trace,det:st.det})); }catch(e){} };
 const toast=t=>{ const el=$('toast'); el.textContent=t; el.classList.add('show'); clearTimeout(toast.h); toast.h=setTimeout(()=>el.classList.remove('show'),3200); };
 let AC=null; const ac=()=>{ if(!AC) AC=new (window.AudioContext||window.webkitAudioContext)(); if(AC.state==='suspended') AC.resume(); return AC; };
 const fmt=t=>`${Math.floor(t/60)}:${(t%60).toFixed(1).padStart(4,'0')}`;
@@ -1149,7 +1150,7 @@ $('qExact').addEventListener('click',()=>{ applyQ(1); $('qStr').value=100; $('qS
 seg('segVib','vib',()=>render());
 function tKey(){ const T=st.tol; $('tKey').innerHTML=`<b style="color:var(--good)">±${T}¢ in tune</b> · <b style="color:var(--warn)">${T}–${Math.min(45,2*T)}¢ a little off</b> · <b style="color:var(--bad)">more = off</b>`; $('tuner').classList.toggle('trace',st.trace==='on'); }
 seg('segTol','tol',()=>{ buildArc(true); if(rec&&rec.zone){ rec.zone=null; } tKey(); });
-seg('segSmooth','smooth'); seg('segTrace','trace',tKey); tKey();
+seg('segSmooth','smooth'); seg('segDet','det',()=>{ swiftStart(); tDet(); }); setTimeout(tDet,0); seg('segTrace','trace',tKey); tKey();
 seg('segTs','ts',()=>drawScore());
 $('scoreAll').addEventListener('click',()=>{ SC.all=!SC.all; drawScore(); });
 // chord picker: the key's own chords first, then any major/minor chord, then "let it choose"
@@ -1420,6 +1421,24 @@ function yin(x,sr){ // small YIN for the live tuner
   // octave check: if half the period is nearly as good, the voice is really an octave higher
   for(let k=0;k<2;k++){ const h=Math.round(best/2); if(h<tMin) break; let hb=h,hv=d[h]; for(let j=h-2;j<=h+2;j++) if(j>=tMin&&d[j]<hv){ hv=d[j]; hb=j; } if(hv<Math.max(0.25,d[best]*2.2)) best=hb; else break; } const a=d[best-1],b=d[best],c=d[best+1],den=a-2*b+c; const t=den>0?best+0.5*(a-c)/den:best;
   return {f:sr/t, ap:b, rms}; }
+// ---- SwiftF0 (MIT, 135 KB neural pitch model) for the live tuner, in a background worker.
+// Every ~30 ms it reads the newest 14 frames (224 ms at 16 kHz) and reports the frame 48 ms back
+// (that little look-ahead is what makes it accurate). If it can't load, the tuner uses YIN as before.
+var SW={w:null,ready:false,busy:false,f:0,c:0,t:0,fail:false,asked:0};
+const SW_WORKER=`importScripts(BASE+'vendor/ort/ort.wasm.min.js'); ort.env.wasm.wasmPaths=BASE+'vendor/ort/'; ort.env.wasm.numThreads=1;
+let sess=null; ort.InferenceSession.create(BASE+'models/swiftf0.onnx',{executionProviders:['wasm']}).then(x=>{ sess=x; postMessage({ready:1}); }).catch(e=>postMessage({error:String(e)}));
+onmessage=async e=>{ if(!sess) return; try{ const x=e.data.x; const r=await sess.run({audio:new ort.Tensor('float32',x,[1,x.length]),fmin:new ort.Tensor('float32',[46.875],[]),fmax:new ort.Tensor('float32',[2093.75],[])});
+  const P=r.pitch.data, C=r.confidence.data, k=Math.max(0,C.length-3); postMessage({f:P[k],c:C[k]}); }catch(err){ postMessage({f:0,c:0}); } };`;
+function swiftStart(){ if(SW.w||SW.fail||st.det==='classic'||!/^https?:$/.test(location.protocol)) return;
+  try{ const base=location.href.replace(/[?#].*$/,'').replace(/[^/]*$/,''); SW.w=new Worker(URL.createObjectURL(new Blob([`const BASE=${JSON.stringify(base)};`+SW_WORKER],{type:'text/javascript'})));
+    SW.w.onmessage=e=>{ const d=e.data; if(d.ready){ SW.ready=true; tDet(); } else if(d.error){ SW.fail=true; tDet(); } else { SW.busy=false; SW.f=d.f; SW.c=d.c; SW.t=performance.now(); } };
+    SW.w.onerror=()=>{ SW.fail=true; tDet(); }; }catch(e){ SW.fail=true; } }
+function swiftAsk(r){ if(!SW.ready||SW.busy) return; const now=performance.now(); if(now-SW.asked<28) return; SW.asked=now;
+  const n=14*256, q=r.sr/16000, L=r.ring.length, x=new Float32Array(n), wq=Math.max(1,Math.round(q)); let pk=0;
+  for(let i=0;i<n;i++){ const pos=r.w-(n-i)*q; let s2=0; for(let k=0;k<wq;k++) s2+=r.ring[((Math.floor(pos)+k)%L+L)%L]; x[i]=s2/wq; const a=Math.abs(x[i]); if(a>pk) pk=a; }
+  if(pk<0.002){ SW.f=0; SW.c=0; SW.t=now; return; } const g=Math.min(40,0.5/pk); for(let i=0;i<n;i++) x[i]*=g;
+  SW.busy=true; SW.w.postMessage({x},[x.buffer]); }
+function tDet(){ const el=$('tDetS'); if(el&&SW) el.textContent=st.det==='classic'?'':SW.ready?'AI pitch on':SW.fail?'AI pitch unavailable — using classic':'loading AI pitch…'; }
 // Calm tuner. The note name changes only once a new note has held for a moment; the needle moves only
 // while you hold a steady pitch (quick runs between notes leave it still instead of swinging around);
 // the in tune / sharp / flat label changes only after it has been true for ~0.3 s.
@@ -1460,10 +1479,12 @@ function tunerLoop(){ if(!rec) return; const r=rec, now=performance.now(), dt=Ma
   const tu=$('tuner'), tn=$('tn');
   if(r.paused){ tn.classList.add('quiet'); tu.classList.add('quiet'); r.raf=requestAnimationFrame(tunerLoop); return; }
   // newest ~45 ms, thinned to ~16 kHz
-  const q=Math.max(1,Math.round(r.sr/16000)), need=Math.round(r.sr*0.045), x=new Float32Array(Math.floor(need/q));
-  for(let i=0;i<x.length;i++){ let s=0; for(let k=0;k<q;k++){ s+=r.ring[(r.w-need+i*q+k+r.ring.length*4)%r.ring.length]; } x[i]=s/q; }
-  const y=yin(x,r.sr/q); r.noise=Math.min(r.noise*1.002+1e-6,y?Math.max(y.rms,1e-5):r.noise);
-  let m=NaN; if(y&&y.f&&y.ap<0.3&&y.rms>Math.max(0.002,r.noise*3)) m=69+12*Math.log2(y.f/440);
+  let m=NaN; swiftStart(); const useSW=st.det!=='classic'&&SW.ready&&!SW.fail;
+  if(useSW){ swiftAsk(r); if(now-SW.t<250&&SW.c>=0.5&&SW.f>0) m=69+12*Math.log2(SW.f/440); }
+  else { const q=Math.max(1,Math.round(r.sr/16000)), need=Math.round(r.sr*0.045), x=new Float32Array(Math.floor(need/q));
+    for(let i=0;i<x.length;i++){ let s=0; for(let k=0;k<q;k++){ s+=r.ring[(r.w-need+i*q+k+r.ring.length*4)%r.ring.length]; } x[i]=s/q; }
+    const y=yin(x,r.sr/q); r.noise=Math.min(r.noise*1.002+1e-6,y?Math.max(y.rms,1e-5):r.noise);
+    if(y&&y.f&&y.ap<0.3&&y.rms>Math.max(0.002,r.noise*3)) m=69+12*Math.log2(y.f/440); }
   if(!isNaN(m)){ const L=r.last; if(L.length){ const k=Math.round((L[L.length-1]-m)/12); if(k&&Math.abs(L[L.length-1]-m-12*k)<0.7&&L.length>=3) m+=12*k; } L.push(m); r.mt=r.mt==null||isNaN(r.mt)||Math.abs(m-r.mt)>1.5?m:r.mt+(m-r.mt)*(1-Math.exp(-dt/0.03)); if(L.length>5) L.shift(); m=[...L].sort((a,b)=>a-b)[L.length>>1]; } else { r.last.length=0; r.mt=NaN; }
   // glide: a smoothed pitch that follows the voice over ~0.15 s
   if(!isNaN(m)){ r.mf=r.mf==null||now-r.lastV>300?m:r.mf+(m-r.mf)*(1-Math.exp(-dt/0.08)); r.me=r.me==null||now-r.lastV>300?m:r.me+(m-r.me)*(1-Math.exp(-dt/tsm().glide)); r.lastV=now; }
@@ -1581,7 +1602,7 @@ async function openLive(keep){ if(rec) return rec; stopPlay(); micTest(false); c
     for(let i=0;i<d.length;i++){ ring[R.w]=d[i]; R.w=(R.w+1)%ring.length; const a=Math.abs(d[i]); if(a>pk) pk=a; } $('lvl').style.width=Math.min(100,pk*140)+'%';
     if(!R.recording) return; if(R.firstT==null) R.firstT=e.playbackTime-2*e.inputBuffer.length/ctx.sampleRate; if(R.paused){ R.wasPaused=true; return; } R.chunks.push(new Float32Array(d)); };
   src.connect(proc); proc.connect(mute); mute.connect(ctx.destination);
-  rec=R; $('tuner').hidden=false; R.raf=requestAnimationFrame(tunerLoop);
+  rec=R; swiftStart(); $('tuner').hidden=false; R.raf=requestAnimationFrame(tunerLoop);
   if($('metro').checked) R.met=startMetro(ctx,Math.max(40,Math.min(240,+$('metBpm').value||100)));
   liveUI(); return R; }
 function closeLive(){ const r=rec; if(!r) return; rec=null; monitor(false); guideStop(r); if(r.met) r.met.stop(); clearInterval(r.iv); cancelAnimationFrame(r.raf);
