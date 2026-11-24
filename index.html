@@ -273,7 +273,7 @@ button.q,label.q{background:transparent;border-color:transparent}button.q:hover,
     <div><label for="tr">Transpose</label><div class="seg" id="segTr">
       <button type="button" data-d="-12">−8va</button><button type="button" data-d="-1">−1</button><button type="button" id="trV" disabled>0</button><button type="button" data-d="1">+1</button><button type="button" data-d="12">+8va</button></div></div>
     <div><label>Playback sound</label><div class="seg" id="segSnd">
-      <button type="button" data-v="keys">Keys</button><button type="button" data-v="flute">Flute</button><button type="button" data-v="square">Chip</button></div></div>
+      <button type="button" data-v="piano">Piano</button><button type="button" data-v="keys">Keys</button><button type="button" data-v="flute">Flute</button><button type="button" data-v="square">Chip</button></div></div>
   </div>
 </details>
 <details class="fold"><summary>Shortcuts &amp; tips</summary>
@@ -754,7 +754,7 @@ if(typeof module!=='undefined') module.exports=Hum;
 <script>
 {
 const $=id=>document.getElementById(id);
-const st={F:null,buf:null,res:null,notes:[],detected:null,edited:false,key:1,stick:10,tr:0,snd:'keys',hear:'both',ref:'a440',demo:true,pos:0,loop:null,sel:-1,tempo:null,div:2,qs:60,vib:'keep',vibSens:0.7,ts:4,tol:10,smooth:'voice',trace:'off',ver:0};
+const st={F:null,buf:null,res:null,notes:[],detected:null,edited:false,key:1,stick:10,tr:0,snd:'piano',hear:'both',ref:'a440',demo:true,pos:0,loop:null,sel:-1,tempo:null,div:2,qs:60,vib:'keep',vibSens:0.7,ts:4,tol:10,smooth:'voice',trace:'off',ver:0};
 try{ const s=JSON.parse(localStorage.getItem('hum2midi')||'{}'); if(!localStorage.getItem('hum2midi_v5')){ delete s.smooth; localStorage.setItem('hum2midi_v5','1'); } ['key','stick','snd','hear','ref','div','qs','vib','vibSens','ts','tol','smooth','trace'].forEach(k=>{ if(s[k]!=null) st[k]=s[k]; }); }catch(e){}
 const saveSet=()=>{ try{ localStorage.setItem('hum2midi',JSON.stringify({key:st.key,stick:st.stick,snd:st.snd,hear:st.hear,ref:st.ref,div:st.div,qs:st.qs,vib:st.vib,vibSens:st.vibSens,ts:st.ts,tol:st.tol,smooth:st.smooth,trace:st.trace})); }catch(e){} };
 const toast=t=>{ const el=$('toast'); el.textContent=t; el.classList.add('show'); clearTimeout(toast.h); toast.h=setTimeout(()=>el.classList.remove('show'),3200); };
@@ -860,7 +860,23 @@ function showLoop(){ const L=st.loop, el=$('loopR'); el.hidden=!L; $('loopClr').
 
 // ---- sound
 let previews=[];
+// ---- sampled upright piano (VCSL "Upright Piano, Knight", Ivy Audio, CC0): two loudness layers, whole-tone steps.
+// Each key has its own tiny fixed detune and a second, very slightly detuned string for a gentle upright beat;
+// a soft low-pass gives the felt tone. Loads in the background; until then the old synth plays.
+const PIANO={buf:{},ready:false,loading:null,keys:[]}; for(let k=31;k<=99;k+=2) PIANO.keys.push(k);
+function loadPiano(){ if(PIANO.loading) return PIANO.loading; const ctx=ac();
+  PIANO.loading=Promise.all(PIANO.keys.flatMap(k=>[1,2].map(async v=>{ try{ const r=await fetch(`piano/k${v}_${k}.ogg`); if(!r.ok) return; PIANO.buf[v+'_'+k]=await ctx.decodeAudioData(await r.arrayBuffer()); }catch(e){} })))
+    .then(()=>{ PIANO.ready=Object.keys(PIANO.buf).length>20; }); return PIANO.loading; }
+const keyDetune=p=>{ const x=Math.sin(p*12.9898)*43758.5453; return ((x-Math.floor(x))-0.5)*7; }; // ±3.5 cents, same every time
+function pianoVoice(ctx,p,vel,t,dest){ // returns {stop(at)}
+  let k=PIANO.keys.reduce((a,b)=>Math.abs(b-p)<Math.abs(a-p)?b:a), x=Math.max(0,Math.min(1,(vel-45)/60));
+  const out=ctx.createGain(), lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=1800+3800*x; lp.Q.value=0.4; out.connect(lp); lp.connect(dest);
+  const srcs=[], rate=2**((p-k+keyDetune(p)/100)/12), lvl=0.55*(0.35+0.65*(vel/127));
+  [[1,1-x],[2,x]].forEach(([v,w])=>{ const b=PIANO.buf[v+'_'+k]; if(!b||w<0.02) return;
+    [[0,1],[2.2,0.28]].forEach(([dc,g0])=>{ const s=ctx.createBufferSource(), g=ctx.createGain(); s.buffer=b; s.playbackRate.value=rate*2**(dc/1200); g.gain.value=lvl*w*g0; s.connect(g); g.connect(out); s.start(t); srcs.push(s); }); });
+  return { srcs, stop(at){ out.gain.setTargetAtTime(0,at,0.11); srcs.forEach(s=>{ try{ s.stop(at+0.8); }catch(e){} }); } }; }
 function tone(ctx,p,t,d,vel,dest,bag,vc){
+  if(st.snd==='piano'&&PIANO.ready){ const V=pianoVoice(ctx,p,vel,t,dest); V.stop(t+d); V.srcs.forEach(s=>bag.push(s)); return; }
   const f=440*2**((p-69)/12), g=ctx.createGain(), v=0.22*vel/100; g.connect(dest);
   const mk=(type,mul,amp)=>{ const o=ctx.createOscillator(), og=ctx.createGain(); o.type=type; o.frequency.value=f*mul; og.gain.value=amp; o.connect(og); og.connect(g); if(vc&&vc.length>1&&d>0.02) o.detune.setValueCurveAtTime(vc,t,d); o.start(t); o.stop(t+d+0.4); bag.push(o); };
   if(st.snd==='keys'){ mk('triangle',1,1); mk('sine',2,0.25); g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(v,t+0.005); g.gain.setTargetAtTime(v*0.35,t+0.01,0.25); }
@@ -1006,7 +1022,8 @@ $('file').addEventListener('change',async e=>{ const f=e.target.files[0]; if(!f)
     if(SERVER||dir){ let have=[]; try{ have=SERVER?await (await fetch('api/takes',{cache:'no-store'})).json():[]; }catch(e){}
       if(have.includes(base+'.'+ext)){ curName=base; curFile=base+'.'+ext; await loadEdits(); } else await saveTake(f,ext,base); }
     else { curName=null; curFile=null; } showTakeBar(); }catch(err){ $('status').textContent='Could not read that file. Try .m4a, .mp3 or .wav.'; } e.target.value=''; });
-$('demo').addEventListener('click',()=>{ curName=null; curFile=null; showTakeBar(); run(demoBuffer(),true); });
+$('demo').addEventListener('click',()=>{ curName=null; curFile=null; showTakeBar(); run(demoBuffer(),true);
+setTimeout(()=>loadPiano().catch(()=>{}),1500); });
 $('play').addEventListener('click',togglePlay);
 $('play').addEventListener('keydown',e=>{ if(e.key===' ') e.preventDefault(); });
 $('loopClr').addEventListener('click',()=>{ st.loop=null; showLoop(); });
@@ -1093,9 +1110,9 @@ function staffEvents(ns,bars,barLen){
 }
 var scorePb=null;
 function stopScore(){ if(scorePb){ scorePb.srcs.forEach(o=>{ try{ o.stop(); }catch(e){} }); clearTimeout(scorePb.to); scorePb=null; } $('scorePlay').textContent='▶ Play as written'; }
-function playScore(){ if(scorePb){ stopScore(); return; } const L=SC.last; if(!L||!L.N.length) return; stopPlay(); const ctx=ac(), t0=ctx.currentTime+0.12, srcs=[];
+async function playScore(){ if(scorePb){ stopScore(); return; } const L=SC.last; if(!L||!L.N.length) return; stopPlay(); const ctx=ac(); await loadPiano(); const t0=ctx.currentTime+0.12, srcs=[], keep=st.snd; st.snd='piano';
   const first=Math.floor(Math.min(...L.N.map(o=>o.u0))/4)*4;
-  L.N.forEach(o=>{ const s0=(o.u0-first)*L.unit, d=(o.u1-o.u0)*L.unit, vc=o.vib?Float32Array.from(o.n.vib.curve,v=>v*100):null; tone(ctx,o.p,t0+s0,d,o.n.vel||90,ctx.destination,srcs,vc); });
+  L.N.forEach(o=>{ const s0=(o.u0-first)*L.unit, d=(o.u1-o.u0)*L.unit, vc=o.vib?Float32Array.from(o.n.vib.curve,v=>v*100):null; tone(ctx,o.p,t0+s0,d,o.n.vel||90,ctx.destination,srcs,vc); }); st.snd=keep;
   const end=(Math.max(...L.N.map(o=>o.u1))-first)*L.unit; scorePb={srcs,to:setTimeout(stopScore,(end+0.6)*1000)}; $('scorePlay').textContent='■ Stop'; }
 function drawScore(){
   const box=$('score'), svg=$('scoreSvg'), msg=$('scoreMsg'); if(!box) return;
@@ -1363,6 +1380,7 @@ let pMaster=null; const pVoices=new Map(); let sustain=false; const held=new Set
 function pianoOut(){ const ctx=ac(); if(!pMaster){ const comp=ctx.createDynamicsCompressor(); comp.threshold.value=-14; comp.ratio.value=4; pMaster=ctx.createGain(); pMaster.gain.value=0.9; pMaster.connect(comp); comp.connect(ctx.destination); } return pMaster; }
 let noiseBuf=null; function noise(ctx){ if(!noiseBuf){ noiseBuf=ctx.createBuffer(1,Math.round(ctx.sampleRate*0.03),ctx.sampleRate); const d=noiseBuf.getChannelData(0); for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*Math.exp(-i/(d.length/5)); } return noiseBuf; }
 function pianoOn(p,vel){ const ctx=ac(); if(ctx.state!=='running') ctx.resume(); pianoOff(p,true);
+  if(PIANO.ready){ const V=pianoVoice(ctx,p,vel,ctx.currentTime+0.003,pianoOut()); pVoices.set(p,{sv:V}); held.add(p); $('midiDot').classList.add('on'); return; } loadPiano();
   const f=440*2**((p-69)/12), t=ctx.currentTime+0.005, v=0.22*(vel/127)**1.4, out=ctx.createGain(), lp=ctx.createBiquadFilter();
   lp.type='lowpass'; lp.frequency.value=Math.min(16000,1200+9000*(vel/127)**1.5+f*2); out.connect(lp); lp.connect(pianoOut());
   const tau=Math.max(0.5,Math.min(7,3.6*Math.sqrt(261.6/f))), oscs=[];
@@ -1371,7 +1389,7 @@ function pianoOn(p,vel){ const ctx=ac(); if(ctx.state!=='running') ctx.resume();
   const nz=ctx.createBufferSource(), bp=ctx.createBiquadFilter(), ng=ctx.createGain(); nz.buffer=noise(ctx); bp.type='bandpass'; bp.frequency.value=Math.min(6000,f*6); bp.Q.value=0.8; ng.gain.value=v*0.6; nz.connect(bp); bp.connect(ng); ng.connect(out); nz.start(t);
   out.gain.value=1; pVoices.set(p,{out,oscs}); held.add(p); $('midiDot').classList.add('on'); }
 function pianoOff(p,now){ const V=pVoices.get(p); held.delete(p); if(!held.size) $('midiDot').classList.remove('on'); if(!V) return; if(sustain&&!now){ V.sus=true; return; }
-  const ctx=ac(), t=ctx.currentTime; V.out.gain.setTargetAtTime(0,t,now?0.015:0.09); V.oscs.forEach(o=>{ try{ o.stop(t+0.7); }catch(e){} }); pVoices.delete(p); }
+  const ctx=ac(), t=ctx.currentTime; if(V.sv){ V.sv.stop(t); pVoices.delete(p); return; } V.out.gain.setTargetAtTime(0,t,now?0.015:0.09); V.oscs.forEach(o=>{ try{ o.stop(t+0.7); }catch(e){} }); pVoices.delete(p); }
 function onMidi(e){ const [s0,d1,d2]=e.data, cmd=s0&0xF0;
   if(cmd===0x90&&d2>0) pianoOn(d1,d2); else if(cmd===0x80||(cmd===0x90&&d2===0)) pianoOff(d1);
   else if(cmd===0xB0&&d1===64){ sustain=d2>=64; if(!sustain) [...pVoices.entries()].forEach(([p,V])=>{ if(V.sus&&!held.has(p)) pianoOff(p,false); }); } }
