@@ -277,6 +277,8 @@ button.q,label.q{background:transparent;border-color:transparent}button.q:hover,
     <div><label>Snap to key</label><div class="seg" id="segKey">
       <button type="button" data-v="0">Off</button><button type="button" data-v="0.6">Gentle</button><button type="button" data-v="1">Normal</button><button type="button" data-v="1.6">Strong</button></div>
       <p class="hint">Only decides near-ties: a note halfway between two semitones goes to the one in your key.</p></div>
+    <div><label>Follow my drift</label><div class="seg" id="segDrift"><button type="button" data-v="on">On</button><button type="button" data-v="off">Off</button></div>
+      <p class="hint">If you slowly go sharp or flat (or start a phrase a little off), notes are read the way a listener hears them: in the key, relative to where your voice has drifted.</p></div>
     <div><label>Note stickiness</label><div class="seg" id="segStick">
       <button type="button" data-v="6">Loose</button><button type="button" data-v="10">Normal</button><button type="button" data-v="16">Sticky</button></div>
       <p class="hint">Sticky ignores bigger wobbles; Loose catches very quick notes.</p></div>
@@ -428,8 +430,11 @@ const Hum = (() => {
   function detectKey(notes){
     const h=new Array(12).fill(0); notes.forEach(o=>h[o.pitch%12]+=Math.sqrt(o.end-o.start));
     const res=[]; for(let t=0;t<12;t++){ const r=i=>(i-t+12)%12;
-      res.push({tonic:t,mode:'major',r:corr(h,KMAJ.map((_,i)=>KMAJ[r(i)]))});
-      res.push({tonic:t,mode:'minor',r:corr(h,KMIN.map((_,i)=>KMIN[r(i)]))}); }
+      // plus: how much of the tune the scale actually covers, and whether the tune starts/ends on its home note
+      const cover=sc=>{ let a=0,b=0; for(let i=0;i<12;i++){ b+=h[i]; if(sc.includes((i-t+12)%12)) a+=h[i]; } return b?a/b:0; };
+      const home=((notes[0]&&notes[0].pitch%12===t)?0.04:0)+((notes[notes.length-1]&&notes[notes.length-1].pitch%12===t)?0.04:0);
+      res.push({tonic:t,mode:'major',r:corr(h,KMAJ.map((_,i)=>KMAJ[r(i)]))+0.6*(cover(SC_MAJ)-1)+home});
+      res.push({tonic:t,mode:'minor',r:corr(h,KMIN.map((_,i)=>KMIN[r(i)]))+0.6*(cover([0,2,3,5,7,8,10])-1)+home}); }
     res.sort((a,b)=>b.r-a.r); const k=res[0];
     const sc=(k.mode==='major'?SC_MAJ:SC_MIN).map(i=>(i+k.tonic)%12);
     const used=h.filter(v=>v>0).length;
@@ -668,6 +673,33 @@ const Hum = (() => {
   function name(p){ return NAMES[p%12]+(Math.floor(p/12)-1); }
   function flatName(p){ return FLATS[p%12]+(Math.floor(p/12)-1); }
 
+  // 9. Follow the singer's drift in the key. Amateur singers slide sharp or flat over a take (often a whole
+  //    semitone), and start new phrases a little off. A listener assumes the singer stayed in the key and hears
+  //    the notes relative to where the voice has drifted. Here a Viterbi over the notes tracks a slowly moving
+  //    offset (small steps between notes, bigger at breaths) and picks for each note the semitone that fits
+  //    best — in-key notes preferred, an out-of-key note kept only when it is clearly sung that way.
+  function followDrift(notes,key,opt={}){
+    if(!key||notes.length<4) return notes;
+    const inKey=new Uint8Array(12); key.scale.forEach(p=>inKey[p]=1);
+    const step=0.05, K=Math.round(1.4/step), O=[]; for(let k=-K;k<=K;k++) O.push(k*step);
+    const sigN=opt.sigNote||0.12, sigB=opt.sigBreath||0.45, chrom=(opt.chromatic||2.2)*(0.6+0.4*key.conf), devS=0.22;
+    const x=notes.map(n=>n.pitch+n.rel/100), w=notes.map(n=>Math.min(1.6,Math.sqrt(Math.max(0.05,n.end-n.start)/0.25)));
+    const emit=(i,o)=>{ const y=x[i]-o, p=Math.round(y), d=y-p; let best=0.5*(d/devS)**2+(inKey[((p%12)+12)%12]?0:chrom), bp=p;
+      for(const q of [p-1,p+1]){ if(!inKey[((q%12)+12)%12]) continue; const dq=y-q, c=0.5*(dq/devS)**2; if(c<best){ best=c; bp=q; } } return [best*w[i],bp]; };
+    let cost=O.map(o=>emit(0,o)[0]+(opt.anchor??3)*Math.abs(o)), back=[];
+    for(let i=1;i<notes.length;i++){ const gap=notes[i].start-notes[i-1].end, sg=gap>0.25?sigB:sigN, nc=[], bk=[];
+      O.forEach((o,j)=>{ let bv=1e18,bj=0; for(let k=Math.max(0,j-24);k<=Math.min(O.length-1,j+24);k++){ const v=cost[k]+0.5*((o-O[k])/sg)**2; if(v<bv){bv=v;bj=k;} } nc.push(bv+emit(i,o)[0]); bk.push(bj); });
+      cost=nc; back.push(bk); }
+    let j=cost.indexOf(Math.min(...cost)); const total=cost[j]; const path=[j]; for(let i=back.length-1;i>=0;i--){ j=back[i][j]; path.unshift(j); }
+    if(opt.costOnly) return total;
+    return notes.map((n,i)=>{ const o=O[path[i]], p=emit(i,o)[1]; return {...n,pitch:p,rel:Math.round(100*(x[i]-o-p)),drift:Math.round(100*o)}; });
+  }
+
+  // the key that makes the most musical sense once drift is allowed for (every key is tried)
+  function driftKey(notes){ if(notes.length<4) return null; let best=null;
+    for(let t=0;t<12;t++) for(const mode of ['major','minor']){ const sc=(mode==='major'?SC_MAJ:[0,2,3,5,7,8,10]).map(i=>(i+t)%12), k={tonic:t,mode,scale:sc,conf:1};
+      const c=followDrift(notes,k,{costOnly:1})+(mode==='minor'?0.3:0); if(!best||c<best.c) best={c,k}; }
+    const k=best.k; return {...k,scale:(k.mode==='major'?SC_MAJ:SC_MIN).map(i=>(i+k.tonic)%12),conf:0.8,r:1,name:FLATS[k.tonic]+' '+k.mode}; }
   // 7. Tempo: the steady pulse under the note starts. Try every tempo from 55 to 180 BPM on an
   // eighth-note grid; the one whose grid the note starts line up with best wins (a mild preference for
   // ~100 BPM settles double/half-time ties), then a straight-line fit fine-tunes speed and position.
@@ -754,7 +786,7 @@ const Hum = (() => {
     return new Uint8Array([0x4D,0x54,0x68,0x64,0,0,0,6,0,0,0,1,(PPQ>>8),PPQ&255, 0x4D,0x54,0x72,0x6B,(L>>>24)&255,(L>>16)&255,(L>>8)&255,L&255,...tr]);
   }
 
-  return {track,frames,tuningCurve,detectKey,decode,refine,transcribe,name,flatName,toMidi,tempo,quantize,vibrato,NAMES,FLATS};
+  return {track,frames,tuningCurve,detectKey,decode,refine,transcribe,name,flatName,toMidi,tempo,quantize,vibrato,followDrift,driftKey,NAMES,FLATS};
 })();
 if(typeof module!=='undefined') module.exports=Hum;
 
@@ -762,9 +794,9 @@ if(typeof module!=='undefined') module.exports=Hum;
 <script>
 {
 const $=id=>document.getElementById(id);
-const st={F:null,buf:null,res:null,notes:[],detected:null,edited:false,key:1,stick:10,tr:0,snd:'piano',hear:'both',ref:'a440',demo:true,pos:0,loop:null,sel:-1,tempo:null,div:2,qs:60,vib:'keep',vibSens:0.7,ts:4,tol:10,smooth:'voice',trace:'off',ver:0,scoreClean:false,scoreChords:false,scoreOct:0};
-try{ const s=JSON.parse(localStorage.getItem('hum2midi')||'{}'); if(!localStorage.getItem('hum2midi_v5')){ delete s.smooth; localStorage.setItem('hum2midi_v5','1'); } ['key','stick','snd','hear','ref','div','qs','vib','vibSens','ts','tol','smooth','trace'].forEach(k=>{ if(s[k]!=null) st[k]=s[k]; }); }catch(e){}
-const saveSet=()=>{ try{ localStorage.setItem('hum2midi',JSON.stringify({key:st.key,stick:st.stick,snd:st.snd,hear:st.hear,ref:st.ref,div:st.div,qs:st.qs,vib:st.vib,vibSens:st.vibSens,ts:st.ts,tol:st.tol,smooth:st.smooth,trace:st.trace})); }catch(e){} };
+const st={F:null,buf:null,res:null,notes:[],detected:null,edited:false,key:1,stick:10,tr:0,snd:'piano',hear:'both',ref:'a440',demo:true,pos:0,loop:null,sel:-1,tempo:null,div:2,qs:60,vib:'keep',vibSens:0.7,ts:4,drift:'on',tol:10,smooth:'voice',trace:'off',ver:0,scoreClean:false,scoreChords:false,scoreOct:0};
+try{ const s=JSON.parse(localStorage.getItem('hum2midi')||'{}'); if(!localStorage.getItem('hum2midi_v5')){ delete s.smooth; localStorage.setItem('hum2midi_v5','1'); } ['key','stick','snd','hear','ref','div','qs','vib','vibSens','ts','tol','smooth','trace','drift'].forEach(k=>{ if(s[k]!=null) st[k]=s[k]; }); }catch(e){}
+const saveSet=()=>{ try{ localStorage.setItem('hum2midi',JSON.stringify({key:st.key,stick:st.stick,snd:st.snd,hear:st.hear,ref:st.ref,div:st.div,qs:st.qs,vib:st.vib,vibSens:st.vibSens,ts:st.ts,drift:st.drift,tol:st.tol,smooth:st.smooth,trace:st.trace})); }catch(e){} };
 const toast=t=>{ const el=$('toast'); el.textContent=t; el.classList.add('show'); clearTimeout(toast.h); toast.h=setTimeout(()=>el.classList.remove('show'),3200); };
 let AC=null; const ac=()=>{ if(!AC) AC=new (window.AudioContext||window.webkitAudioContext)(); if(AC.state==='suspended') AC.resume(); return AC; };
 const fmt=t=>`${Math.floor(t/60)}:${(t%60).toFixed(1).padStart(4,'0')}`;
@@ -797,6 +829,7 @@ function redecode(fresh){
   if(notes.length>=3){ key=Hum.detectKey(notes); if(st.key>0) notes=Hum.decode(F,tune,key,opt); key=Hum.detectKey(notes); }
   if(notes.length>=4) Hum.refine(F,tune,notes);
   notes=Hum.decode(F,tune,st.key>0?key:null,{...opt,shape:1});
+  if(st.drift!=='off'&&st.key>0&&notes.length>=4){ const k2=Hum.driftKey(notes)||key; notes=Hum.followDrift(Hum.decode(F,tune,k2,{...opt,shape:1}),k2); key=k2; }
   addVib(notes); st.res={tune,key}; st.notes=notes; st.detected=notes.map(n=>({...n})); st.edited=false; st.sel=-1; st.tempo=Hum.tempo(notes); qSess=null; render();
 }
 
@@ -1048,7 +1081,7 @@ function refHint(){ $('refHint').textContent=st.ref==='me'
   :'Tune to A440: judges you against standard pitch (A = 440 Hz), the same as a piano or any tuner app. Best if you will sing along with real music later.'; }
 function seg(id,key,cb){ const el=$(id); const sync=()=>el.querySelectorAll('button[data-v]').forEach(b=>b.setAttribute('aria-pressed',String(String(st[key])===b.dataset.v)));
   el.addEventListener('click',e=>{ const b=e.target.closest('button[data-v]'); if(!b) return; st[key]=isNaN(+b.dataset.v)?b.dataset.v:+b.dataset.v; sync(); saveSet(); cb&&cb(); }); sync(); }
-seg('segKey','key',()=>redecode()); seg('segStick','stick',()=>redecode()); seg('segSnd','snd'); seg('segHear','hear',()=>{ if(pb) startPlay(nowPos()); }); seg('segRef','ref',refHint); refHint();
+seg('segKey','key',()=>redecode()); seg('segDrift','drift',()=>redecode()); seg('segStick','stick',()=>redecode()); seg('segSnd','snd'); seg('segHear','hear',()=>{ if(pb) startPlay(nowPos()); }); seg('segRef','ref',refHint); refHint();
 $('segTr').addEventListener('click',e=>{ const b=e.target.closest('button[data-d]'); if(!b) return; st.tr=Math.max(-24,Math.min(24,st.tr+ +b.dataset.d)); $('trV').textContent=(st.tr>0?'+':'')+st.tr; if(st.res) render(); });
 $('file').addEventListener('change',async e=>{ const f=e.target.files[0]; if(!f) return; $('status').textContent='Decoding…';
   try{ const buf=await ac().decodeAudioData(await f.arrayBuffer()); await run(buf,false);
