@@ -1,8 +1,8 @@
 {
  "sigma": 0.33,
  "kappa": 2,
- "TN": 8,
- "TS": 4,
+ "TN": 6,
+ "TS": 6,
  "gapF": 6,
  "gapDip": 4,
  "dip": 5,
@@ -18,7 +18,7 @@
  "scoopS": 0.15,
  "scoopST": 2,
  "scoopR": 1.5,
- "foldL": 0.3,
+ "foldL": 0.2,
  "foldSet": 0.06,
  "nbFlat": 0.7
 }

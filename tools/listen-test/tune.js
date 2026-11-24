@@ -29,8 +29,9 @@ function evalAll(P,withHold){ Object.assign(Hum.HP,P); const r={};
   for(const [s,kind] of Object.entries(withHold?{...SETS,...HOLD}:SETS)){ let t=0; for(const c of data[s]){ const g=transcribe(c.F); t+=kind==='prefix'?prefixScore(g,c.ref):fullScore(g,c.ref); } r[s]=100*t/data[s].length; }
   const g=transcribe(take); r.take=ed(g,KEY)[g.length][KEY.length]; r.obj=Object.keys(SETS).reduce((a,s)=>a+r[s],0)/Object.keys(SETS).length-0.5*Math.max(0,r.take-2); return r; }
 const fmt=r=>Object.entries(r).map(([k,v])=>k+' '+(k==='take'?v:v.toFixed(1))).join(' | ');
-let P={...Hum.HP}; const base=evalAll(P,true); console.log('start  ',fmt(base)); let best=base.obj;
-const steps={sigma:[0.25,0.3,0.38,0.45],kappa:[0.6,0.9,1.6,2],TN:[6,8,13,16],TS:[2,3,6],gapF:[4,5,8,10],gapDip:[2,3,6],dip:[3,4,6,7,9],nvTh:[4,4.5,6,7],nvDip:[0,0.3,1,2],tailS:[0.1,0.2,0.25],tailDB:[1.5,2,4,6],veto:[1.5,2,3,3.5,4.5],
+if(process.env.EVAL){ const S={...Hum.HP,...(process.env.START?JSON.parse(fs.readFileSync(process.env.START,'utf8')):{})}; for(const e of process.env.EVAL.split(';')) console.log(e.padEnd(40),fmt(evalAll({...S,...JSON.parse(e)},true))); process.exit(0); }
+let P={...Hum.HP,...(process.env.START?JSON.parse(fs.readFileSync(process.env.START,'utf8')):{})}; const base=evalAll(P,true); console.log('start  ',fmt(base)); let best=base.obj;
+const steps={onMode:[1,2,3],onTh:[0.3,0.4,0.6,0.7],onAdd:[0.8,0.85,0.95],sigma:[0.25,0.3,0.38,0.45],kappa:[0.6,0.9,1.6,2],TN:[6,8,13,16],TS:[2,3,6],gapF:[4,5,8,10],gapDip:[2,3,6],dip:[3,4,6,7,9],nvTh:[4,4.5,6,7],nvDip:[0,0.3,1,2],tailS:[0.1,0.2,0.25],tailDB:[1.5,2,4,6],veto:[1.5,2,3,3.5,4.5],
   minF:[0.04,0.08,0.1],shortF:[0.12,0.2,0.25],glideSlope:[0.025,0.05,0.07],glideStab:[0.3,0.6],scoopS:[0.1,0.12,0.18,0.22],scoopST:[1,3],scoopR:[1,2,3],foldL:[0.2,0.25,0.4],foldSet:[0.03,0.1,0.15],nbFlat:[0.5,0.6,0.8,0.9]};
 for(let round=0;round<+roundsArg;round++){ for(const [k,vals] of Object.entries(steps)){ for(const v of vals){ const Q={...P,[k]:v}; const r=evalAll(Q,false);
       if(r.obj>best+0.05){ best=r.obj; P=Q; console.log(`round ${round+1}: ${k}=${v} -> ${fmt(r)}`); fs.writeFileSync(outf,JSON.stringify(P,null,1)); } } } }
