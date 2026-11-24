@@ -31,6 +31,7 @@ button:focus-visible,.file:focus-within,input:focus-visible,select:focus-visible
 .takebar b{color:var(--ink);font-weight:600}
 .hearL{display:inline-flex;gap:8px;align-items:center;min-height:44px;padding:0 14px;border:1px solid var(--line);border-radius:12px;background:var(--panel);font-weight:600;font-size:15px;cursor:pointer}
 .hearL input{width:20px;height:20px;margin:0}
+#metBpm{width:4.2em;height:32px;font:600 15px Inter,sans-serif;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);text-align:center}
 .micRow label{font-weight:600;font-size:15px}
 .micRow select{font:500 15px/1 Inter,sans-serif;min-height:44px;padding:0 12px;border-radius:12px;border:1px solid var(--line);background:var(--panel);color:var(--ink);max-width:100%;min-width:0;flex:0 1 340px}
 .micRow .meter{flex:0 1 160px;min-width:80px;margin:0}.micRow .meter i{background:var(--ok)}
@@ -69,7 +70,7 @@ canvas{display:block}
 .loopr{position:absolute;top:0;bottom:0;background:color-mix(in srgb,var(--acc2) 16%,transparent);border-left:2px solid var(--acc2);border-right:2px solid var(--acc2);pointer-events:none}
 .transport{align-items:center}
 .transport .status{font-variant-numeric:tabular-nums;min-width:5ch}
-.score{margin:12px 0 0;padding:12px 14px 6px;border:1px solid var(--line);border-radius:16px;background:var(--panel);overflow:hidden}
+#timing{margin:12px 0 0}.score{margin:10px 0 0;padding:12px 14px 6px;border:1px solid var(--line);border-radius:16px;background:var(--panel);overflow:hidden}
 .scoreHead{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin-bottom:4px}.scoreHead b{font-size:16px}
 .scoreHead .seg button{min-height:34px;padding:0 10px;font-size:14px}
 #scoreMsg:empty{display:none}
@@ -100,22 +101,40 @@ canvas{display:block}
 #tArc .zone{transition:opacity .45s}
 #tArc .needle{transition:opacity .4s}
 .tCents{font:700 clamp(36px,5vw,50px)/1 'Familjen Grotesk',Inter,sans-serif;font-variant-numeric:tabular-nums;color:var(--tmute);margin-top:-36px;min-height:1em;transition:color .4s}
-.tuner.ok .tCents{color:var(--neon);text-shadow:0 0 18px color-mix(in srgb,var(--neon) 55%,transparent)}
+.tuner{--good:#2bdc6c;--warn:#ffc533;--bad:#ff4d4d}
+.tuner.ok .tCents{color:var(--good);text-shadow:0 0 18px color-mix(in srgb,var(--good) 50%,transparent)}
+.tuner.near .tCents{color:var(--warn);text-shadow:0 0 16px color-mix(in srgb,var(--warn) 40%,transparent)}
+.tuner.far .tCents{color:var(--bad);text-shadow:0 0 16px color-mix(in srgb,var(--bad) 40%,transparent)}
 .tPill{margin-top:8px;min-width:210px;text-align:center;padding:10px 22px;border-radius:14px;font-weight:700;font-size:19px;
   border:1px solid var(--tline);background:#15161b;color:var(--tmute);transition:background .4s,border-color .4s,color .4s,box-shadow .4s}
-.tuner.ok .tPill{color:var(--neon);border-color:color-mix(in srgb,var(--neon) 70%,transparent);background:color-mix(in srgb,var(--neon) 14%,#111);box-shadow:0 0 22px color-mix(in srgb,var(--neon) 28%,transparent)}
-.tuner.near .tPill{color:#ffc79a;border-color:#5a3b22}
-.tuner.far .tPill{color:var(--tink);border-color:#3a3b44}
+.tuner.ok .tPill{color:var(--good);border-color:color-mix(in srgb,var(--good) 70%,transparent);background:color-mix(in srgb,var(--good) 14%,#111);box-shadow:0 0 22px color-mix(in srgb,var(--good) 28%,transparent)}
+.tuner.near .tPill{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 60%,transparent);background:color-mix(in srgb,var(--warn) 12%,#111)}
+.tuner.far .tPill{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 60%,transparent);background:color-mix(in srgb,var(--bad) 12%,#111)}
 .tuner.quiet .tPill,.tuner.quiet .tCents{opacity:.4}
-#tCv{width:100%;height:70px;margin-top:10px}
+#tCv{width:100%;height:70px;margin-top:10px}.tuner.trace #tCv{height:150px;border-radius:10px;background:#0c0d10}
 .tuner .meter{width:100%;background:#1b1c22;margin:4px 0 6px}.tuner .meter i{background:var(--neon)}
-.tunerOpts{width:100%;display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;justify-content:space-between;font-size:15px;
+.tunerOpts{width:100%;display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:flex-start;font-size:15px;
   border:1px solid var(--tline);border-radius:14px;padding:8px 10px;background:#111217}
 .tunerOpts .seg button{background:#15161b;color:var(--tink);border-color:var(--tline)}
 .tunerOpts .seg button[aria-pressed=true]{background:#2a2b33;color:#fff;border-color:#3a3b44}
-.tKey{color:var(--tmute);font-weight:600}.tKey b{color:var(--neon)}
+.tKey{color:var(--tmute);font-weight:600;font-size:14px}.tKey b{color:var(--neon)}
+.tSet{display:inline-flex;align-items:center;gap:8px;color:var(--tmute);font-size:14px;font-weight:600}
+.tunerOpts .seg button{min-height:36px;padding:0 10px;font-size:14px}
 .tunerOpts .hint{flex-basis:100%;color:var(--tmute);margin:0}
 @media(prefers-reduced-motion:reduce){.tn,#tArc .zone,.tPill,.tCents{transition:none}}
+/* compact tuner: a small panel left of the roll while recording */
+.recArea{display:flex;gap:12px;align-items:flex-start}.recArea>.roll{flex:1 1 auto;min-width:0}
+.recArea .tuner{flex:0 0 270px;width:270px;margin:0;padding:12px 12px 10px;gap:2px;border-radius:16px;justify-content:flex-start}
+.recArea .tn b{font-size:46px}.recArea .tn span{font-size:13px;min-height:1.3em}
+.recArea #tArc{width:100%;margin-top:2px}
+.recArea .tCents{font-size:24px;margin-top:-14px}
+.recArea .tPill{min-width:0;margin-top:4px;padding:5px 12px;font-size:14px;border-radius:10px}
+.recArea #tCv{height:40px;margin-top:6px}.recArea .tuner.trace #tCv{height:90px}
+.tOpts{width:100%;margin-top:6px;font-size:13px;color:var(--tmute)}.tOpts summary{cursor:pointer;padding:4px 2px;font-weight:600}
+.recArea .tunerOpts{flex-direction:column;align-items:flex-start;gap:8px;padding:8px;margin-top:4px}
+.recArea .tSet{flex-wrap:wrap}.recArea .tunerOpts .seg button{min-height:30px;padding:0 8px;font-size:13px}
+@media(max-width:760px){.recArea{flex-direction:column}.recArea .tuner{flex:none;width:auto}}
+
 #toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90vw}
 #toast.show{opacity:1}
 @media(prefers-reduced-motion:reduce){#toast{transition:none}}
@@ -129,6 +148,7 @@ canvas{display:block}
     <button id="rec" type="button" class="recbtn"><span class="dot"></span><span id="recT">Record</span></button>
     <button id="recPause" type="button" hidden>❚❚ Pause</button>
     <button id="recCancel" type="button" hidden>✕ Cancel</button>
+    <label class="hearL" id="metL" title="Plays a click in your headphones while you record; the take then uses this exact tempo"><input type="checkbox" id="metro"> Click <input type="number" id="metBpm" min="40" max="240" step="1" value="100" aria-label="Click tempo in BPM"> BPM</label>
     <label class="hearL" id="hearL" hidden><input type="checkbox" id="hear"> Hear myself while recording <span class="status" id="hearS"></span></label>
     <button id="demo" type="button">Sample take</button>
     <span class="status" id="status"></span>
@@ -148,6 +168,7 @@ canvas{display:block}
     <button id="pick" type="button">Choose save folder</button>
     <span class="status" id="folderS">Not set — new recordings will go to Downloads. Tip: open the app with “Start HumToMidi.bat” and they save to the recordings folder by themselves.</span>
   </div>
+  <div class="recArea">
   <div class="tuner" id="tuner" hidden>
     <div class="tn quiet" id="tn"><b id="tNote">–</b><span id="tHz">&nbsp;</span></div>
     <svg id="tArc" viewBox="0 0 600 214" aria-hidden="true"></svg>
@@ -155,15 +176,28 @@ canvas{display:block}
     <div class="tPill" id="tPill">Sing a note</div>
     <canvas id="tCv" aria-label="Live sound from the microphone"></canvas>
     <div class="meter" id="meter" hidden><i id="lvl"></i></div>
-    <div class="tunerOpts">
+    <details class="tOpts"><summary>Tuner settings</summary><div class="tunerOpts">
       <div class="seg" id="segRef"><button type="button" data-v="a440">A4 = 440 Hz</button><button type="button" data-v="me">Tune to me</button></div>
-      <span class="tKey">±10¢ = <b>in tune</b></span>
+      <div class="tSet"><span>Tolerance</span><div class="seg" id="segTol"><button type="button" data-v="5">±5</button><button type="button" data-v="10">±10</button><button type="button" data-v="15">±15</button><button type="button" data-v="20">±20</button></div></div>
+      <div class="tSet"><span>Smoothing</span><div class="seg" id="segSmooth"><button type="button" data-v="low">Low</button><button type="button" data-v="med">Medium</button><button type="button" data-v="high">High</button></div></div>
+      <div class="tSet"><span>Pitch trace</span><div class="seg" id="segTrace"><button type="button" data-v="off">Off</button><button type="button" data-v="on">On</button></div></div>
+      <span class="tKey" id="tKey"></span>
       <p class="hint" id="refHint"></p>
-    </div>
+    </div></details>
   </div>
   <div class="roll" id="roll">
     <div class="keys"><canvas id="kc"></canvas></div>
     <div class="scroll" id="sc"><canvas id="cv"></canvas><div class="loopr" id="loopR" hidden></div><div class="ph" id="ph"></div></div>
+  </div>
+  </div>
+  <div class="tools" id="timing">
+    <b>Tempo</b>
+    <span class="tempoV" id="tempoV">— BPM</span>
+    <div class="seg"><button type="button" id="tmDn" title="Slower">−</button><button type="button" id="tmUp" title="Faster">+</button><button type="button" id="tmHalf" title="Half as fast">½×</button><button type="button" id="tmDbl" title="Twice as fast">2×</button></div>
+    <div class="seg" id="segDiv" aria-label="Grid"><button type="button" data-v="1">1/4</button><button type="button" data-v="2">1/8</button><button type="button" data-v="4">1/16</button><button type="button" data-v="3">Triplets</button></div>
+    <label class="lever">Humanize <input type="range" id="qStr" min="10" max="100" step="5"> <output id="qStrV"></output> exact</label>
+    <button type="button" id="qBtn">Quantize</button>
+    <button type="button" id="qExact">Snap exactly</button>
   </div>
   <div class="score" id="score">
     <div class="scoreHead"><b>Sheet music</b><span class="status" id="scoreInfo"></span><div class="seg" id="segTs"><button type="button" data-v="4">4/4</button><button type="button" data-v="3">3/4</button></div></div>
@@ -177,15 +211,6 @@ canvas{display:block}
     <span class="status" id="posT">0:00.0</span>
     <button id="loopClr" type="button" hidden>✕ Clear loop</button>
     <button id="undoB" type="button" hidden>↶ Undo</button>
-  </div>
-  <div class="tools" id="timing">
-    <b>Tempo</b>
-    <span class="tempoV" id="tempoV">— BPM</span>
-    <div class="seg"><button type="button" id="tmDn" title="Slower">−</button><button type="button" id="tmUp" title="Faster">+</button><button type="button" id="tmHalf" title="Half as fast">½×</button><button type="button" id="tmDbl" title="Twice as fast">2×</button></div>
-    <div class="seg" id="segDiv" aria-label="Grid"><button type="button" data-v="1">1/4</button><button type="button" data-v="2">1/8</button><button type="button" data-v="4">1/16</button><button type="button" data-v="3">Triplets</button></div>
-    <label class="lever">Humanize <input type="range" id="qStr" min="10" max="100" step="5"> <output id="qStrV"></output> exact</label>
-    <button type="button" id="qBtn">Quantize</button>
-    <button type="button" id="qExact">Snap exactly</button>
   </div>
   <div class="tools" id="vibBar">
     <b>Vibrato</b>
@@ -668,9 +693,9 @@ if(typeof module!=='undefined') module.exports=Hum;
 <script>
 {
 const $=id=>document.getElementById(id);
-const st={F:null,buf:null,res:null,notes:[],detected:null,edited:false,key:1,stick:10,tr:0,snd:'keys',hear:'both',ref:'a440',demo:true,pos:0,loop:null,sel:-1,tempo:null,div:2,qs:60,vib:'keep',vibSens:0.7,ts:4,ver:0};
-try{ const s=JSON.parse(localStorage.getItem('hum2midi')||'{}'); ['key','stick','snd','hear','ref','div','qs','vib','vibSens','ts'].forEach(k=>{ if(s[k]!=null) st[k]=s[k]; }); }catch(e){}
-const saveSet=()=>{ try{ localStorage.setItem('hum2midi',JSON.stringify({key:st.key,stick:st.stick,snd:st.snd,hear:st.hear,ref:st.ref,div:st.div,qs:st.qs,vib:st.vib,vibSens:st.vibSens,ts:st.ts})); }catch(e){} };
+const st={F:null,buf:null,res:null,notes:[],detected:null,edited:false,key:1,stick:10,tr:0,snd:'keys',hear:'both',ref:'a440',demo:true,pos:0,loop:null,sel:-1,tempo:null,div:2,qs:60,vib:'keep',vibSens:0.7,ts:4,tol:10,smooth:'med',trace:'off',ver:0};
+try{ const s=JSON.parse(localStorage.getItem('hum2midi')||'{}'); ['key','stick','snd','hear','ref','div','qs','vib','vibSens','ts','tol','smooth','trace'].forEach(k=>{ if(s[k]!=null) st[k]=s[k]; }); }catch(e){}
+const saveSet=()=>{ try{ localStorage.setItem('hum2midi',JSON.stringify({key:st.key,stick:st.stick,snd:st.snd,hear:st.hear,ref:st.ref,div:st.div,qs:st.qs,vib:st.vib,vibSens:st.vibSens,ts:st.ts,tol:st.tol,smooth:st.smooth,trace:st.trace})); }catch(e){} };
 const toast=t=>{ const el=$('toast'); el.textContent=t; el.classList.add('show'); clearTimeout(toast.h); toast.h=setTimeout(()=>el.classList.remove('show'),3200); };
 let AC=null; const ac=()=>{ if(!AC) AC=new (window.AudioContext||window.webkitAudioContext)(); if(AC.state==='suspended') AC.resume(); return AC; };
 const fmt=t=>`${Math.floor(t/60)}:${(t%60).toFixed(1).padStart(4,'0')}`;
@@ -950,6 +975,9 @@ $('qStr').addEventListener('change',saveSet);
 $('qBtn').addEventListener('click',()=>{ applyQ(st.qs/100); toast(`Quantized ${st.qs}% toward the ${({1:'quarter-note',2:'eighth-note',4:'sixteenth-note',3:'triplet'})[st.div]} grid — move the lever to adjust, Undo to go back`); });
 $('qExact').addEventListener('click',()=>{ applyQ(1); $('qStr').value=100; $('qStrV').textContent='100%'; toast('Snapped exactly to the grid — Undo to go back'); });
 seg('segVib','vib',()=>render());
+function tKey(){ const T=st.tol; $('tKey').innerHTML=`<b style="color:var(--good)">±${T}¢ in tune</b> · <b style="color:var(--warn)">${T}–${Math.min(45,2*T)}¢ a little off</b> · <b style="color:var(--bad)">more = off</b>`; $('tuner').classList.toggle('trace',st.trace==='on'); }
+seg('segTol','tol',()=>{ buildArc(true); if(rec&&rec.zone){ rec.zone=null; } tKey(); });
+seg('segSmooth','smooth'); seg('segTrace','trace',tKey); tKey();
 seg('segTs','ts',()=>drawScore());
 seg('segVibS','vibSens',()=>{ addVib(st.notes); render(); resaveSoon(); });
 // ---- sheet music: the notes as a piano grand staff, redrawn after every change.
@@ -1121,23 +1149,27 @@ function yin(x,sr){ // small YIN for the live tuner
 // Calm tuner. The note name changes only once a new note has held for a moment; the needle moves only
 // while you hold a steady pitch (quick runs between notes leave it still instead of swinging around);
 // the in tune / sharp / flat label changes only after it has been true for ~0.3 s.
-const T_DEG=1.2, T_CX=300, T_CY=300, T_R=250; // 1.2° per cent: -50..+50 cents spans ±60°
-function buildArc(){ const svg=$('tArc'); if(svg.childElementCount) return; const pt=(c,r)=>{ const a=c*T_DEG*Math.PI/180; return [T_CX+r*Math.sin(a),T_CY-r*Math.cos(a)]; };
+const T_DEG=1.2, T_CX=300, T_CY=300, T_R=250;
+// Smoothing: how fast the reading follows you (glide/needle time constants, label patience, steady window)
+const TSM={low:{glide:0.07,cz:0.12,pat:200,win:110},med:{glide:0.15,cz:0.3,pat:350,win:150},high:{glide:0.25,cz:0.6,pat:600,win:200}};
+const tsm=()=>TSM[st.smooth]||TSM.med; // 1.2° per cent: -50..+50 cents spans ±60°
+function buildArc(force){ const svg=$('tArc'); if(svg.childElementCount&&!force) return; const T=st.tol, T2=Math.min(45,2*T); const pt=(c,r)=>{ const a=c*T_DEG*Math.PI/180; return [T_CX+r*Math.sin(a),T_CY-r*Math.cos(a)]; };
   const arc=(c0,c1,r)=>{ const [x0,y0]=pt(c0,r),[x1,y1]=pt(c1,r); return `M${x0.toFixed(1)} ${y0.toFixed(1)}A${r} ${r} 0 0 1 ${x1.toFixed(1)} ${y1.toFixed(1)}`; };
   let h=`<defs><filter id="tGlow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="7" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
     <linearGradient id="tFade" x1="0" x2="1"><stop offset="0" stop-color="#24252c" stop-opacity=".25"/><stop offset=".5" stop-color="#2c2d35"/><stop offset="1" stop-color="#24252c" stop-opacity=".25"/></linearGradient></defs>
     <path d="${arc(-50,50,T_R)}" fill="none" stroke="url(#tFade)" stroke-width="26" stroke-linecap="round"/>
-    <path d="${arc(-10,10,T_R)}" fill="none" stroke="#ff7a1a" stroke-opacity=".22" stroke-width="26"/>
-    <path class="zone" id="tZone" d="${arc(-10,10,T_R)}" fill="none" stroke="#ff7a1a" stroke-width="26" filter="url(#tGlow)" opacity="0"/>`;
+    ${[[-T,T,'#2bdc6c','ok'],[-T2,-T,'#ffc533','nL'],[T,T2,'#ffc533','nR'],[-50,-T2,'#ff4d4d','fL'],[T2,50,'#ff4d4d','fR']].map(([c0,c1,col,id])=>
+      `<path d="${arc(c0,c1,T_R)}" fill="none" stroke="${col}" stroke-opacity=".16" stroke-width="26"/><path class="zone" id="tZ${id}" d="${arc(c0,c1,T_R)}" fill="none" stroke="${col}" stroke-width="26" filter="url(#tGlow)" opacity="0"/>`).join('')}`;
   for(let c=-50;c<=50;c+=5){ const big=c%10===0, [x0,y0]=pt(c,T_R-(big?16:9)), [x1,y1]=pt(c,T_R+(big?16:9));
     h+=`<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${x1.toFixed(1)}" y2="${y1.toFixed(1)}" stroke="${c===0?'#f3f1f6':'#5d5e69'}" stroke-width="${big?2.5:1.5}" stroke-linecap="round"/>`;
-    if(big){ const [tx,ty]=pt(c,T_R+38); h+=`<text x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" fill="${c===0?'#f3f1f6':'#8c8a97'}" font-size="20" font-weight="${c===0?700:500}" text-anchor="middle" dominant-baseline="middle" font-family="Inter,sans-serif">${c>0?'+'+c:c}</text>`; } }
+    if(big){ const [tx,ty]=pt(c,T_R+38); h+=`<text x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" fill="${c===0?'#f3f1f6':'#8c8a97'}" font-size="30" font-weight="${c===0?700:500}" text-anchor="middle" dominant-baseline="middle" font-family="Inter,sans-serif">${c>0?'+'+c:c}</text>`; } }
   const [fx,fy]=pt(-50,T_R+38),[sx,sy]=pt(50,T_R+38);
-  h+=`<text x="${(fx-6).toFixed(1)}" y="${(fy+30).toFixed(1)}" fill="#8c8a97" font-size="17" text-anchor="middle" font-family="Inter,sans-serif">flat</text><text x="${(sx+6).toFixed(1)}" y="${(sy+30).toFixed(1)}" fill="#8c8a97" font-size="17" text-anchor="middle" font-family="Inter,sans-serif">sharp</text>
+  h+=`<text x="${(fx-6).toFixed(1)}" y="${(fy+30).toFixed(1)}" fill="#8c8a97" font-size="26" text-anchor="middle" font-family="Inter,sans-serif">flat</text><text x="${(sx+6).toFixed(1)}" y="${(sy+30).toFixed(1)}" fill="#8c8a97" font-size="26" text-anchor="middle" font-family="Inter,sans-serif">sharp</text>
     <g id="tNeedle" class="needle"><line x1="${T_CX}" y1="${T_CY-T_R+52}" x2="${T_CX}" y2="${T_CY-T_R-14}" stroke="#fff" stroke-width="5" stroke-linecap="round"/></g>`;
   svg.innerHTML=h; }
 function tunerReset(){ buildArc(); $('tNote').textContent='–'; $('tHz').innerHTML='&nbsp;'; $('tCents').innerHTML='&nbsp;'; $('tPill').textContent='Sing a note';
-  $('tuner').classList.remove('ok','near','far'); $('tn').classList.add('quiet'); $('tNeedle').setAttribute('transform',`rotate(0 ${T_CX} ${T_CY})`); $('tZone').setAttribute('opacity','0'); }
+  $('tuner').classList.remove('ok','near','far'); $('tn').classList.add('quiet'); $('tNeedle').setAttribute('transform',`rotate(0 ${T_CX} ${T_CY})`); tunerZone(null); }
+function tunerZone(z){ const on={tZok:z==='ok',tZnL:z==='near-',tZnR:z==='near+',tZfL:z==='far-',tZfR:z==='far+'}; for(const id in on) $(id).setAttribute('opacity',on[id]?'1':'0'); }
 function tunerLoop(){ if(!rec) return; const r=rec, now=performance.now(), dt=Math.min(0.1,(now-(r.tPrev||now))/1000); r.tPrev=now;
   const tu=$('tuner'), tn=$('tn');
   if(r.paused){ tn.classList.add('quiet'); tu.classList.add('quiet'); r.raf=requestAnimationFrame(tunerLoop); return; }
@@ -1145,13 +1177,13 @@ function tunerLoop(){ if(!rec) return; const r=rec, now=performance.now(), dt=Ma
   const q=Math.max(1,Math.round(r.sr/16000)), need=Math.round(r.sr*0.045), x=new Float32Array(Math.floor(need/q));
   for(let i=0;i<x.length;i++){ let s=0; for(let k=0;k<q;k++){ s+=r.ring[(r.w-need+i*q+k+r.ring.length*4)%r.ring.length]; } x[i]=s/q; }
   const y=yin(x,r.sr/q); r.noise=Math.min(r.noise*1.002+1e-6,y?Math.max(y.rms,1e-5):r.noise);
-  let m=NaN; if(y&&y.f&&y.ap<0.25&&y.rms>Math.max(0.004,r.noise*3)) m=69+12*Math.log2(y.f/440);
+  let m=NaN; if(y&&y.f&&y.ap<0.2&&y.rms>Math.max(0.006,r.noise*4)) m=69+12*Math.log2(y.f/440);
   if(!isNaN(m)){ const L=r.last; if(L.length&&Math.abs(m-L[L.length-1])>9) m+=12*Math.round((L[L.length-1]-m)/12); L.push(m); r.mt=r.mt==null||isNaN(r.mt)||Math.abs(m-r.mt)>1.5?m:r.mt+(m-r.mt)*(1-Math.exp(-dt/0.03)); if(L.length>5) L.shift(); m=[...L].sort((a,b)=>a-b)[L.length>>1]; } else { r.last.length=0; r.mt=NaN; }
   // glide: a smoothed pitch that follows the voice over ~0.15 s
-  if(!isNaN(m)){ r.me=r.me==null||now-r.lastV>300?m:r.me+(m-r.me)*(1-Math.exp(-dt/0.15)); r.lastV=now; }
+  if(!isNaN(m)){ r.me=r.me==null||now-r.lastV>300?m:r.me+(m-r.me)*(1-Math.exp(-dt/tsm().glide)); r.lastV=now; }
   // steady = the glided pitch (which averages out vibrato) stayed within a third of a semitone for ~140 ms
-  r.rec2=r.rec2||[]; if(!isNaN(m)) r.rec2.push({t:now,m:r.me}); while(r.rec2.length&&now-r.rec2[0].t>140) r.rec2.shift();
-  let steady=false; if(r.rec2.length>=4&&now-r.rec2[0].t>=100){ let lo=1e9,hi=-1e9; r.rec2.forEach(o=>{ lo=Math.min(lo,o.m); hi=Math.max(hi,o.m); }); steady=hi-lo<0.34; }
+  r.rec2=r.rec2||[]; if(!isNaN(m)) r.rec2.push({t:now,m:r.me}); while(r.rec2.length&&now-r.rec2[0].t>tsm().win+40) r.rec2.shift();
+  let steady=false; if(r.rec2.length>=4&&now-r.rec2[0].t>=tsm().win-10){ let lo=1e9,hi=-1e9; r.rec2.forEach(o=>{ lo=Math.min(lo,o.m); hi=Math.max(hi,o.m); }); steady=hi-lo<0.34; }
   // "Tune to me": your own grid, from the steady moments of the last few seconds (moves slowly)
   if(st.ref==='me'){ let s=0,c=0; for(let i=3;i<r.hist.length;i++){ const a=r.hist[i].m,b=r.hist[i-3].m; if(isNaN(a)||isNaN(b)||Math.abs(a-b)>0.05) continue; s+=Math.sin(2*Math.PI*a); c+=Math.cos(2*Math.PI*a); }
     const tgt=(s||c)?Math.atan2(s,c)/(2*Math.PI):r.off; let d=tgt-r.off; d-=Math.round(d); r.off+=d*(1-Math.exp(-dt/1.5)); } else r.off=0;
@@ -1162,20 +1194,30 @@ function tunerLoop(){ if(!rec) return; const r=rec, now=performance.now(), dt=Ma
     else if(p===r.disp) r.cand=null;
     if(r.shown!==r.disp){ r.shown=r.disp; const nm=Hum.flatName(r.disp), mm=nm.match(/^(.*?)(-?\d+)$/); $('tNote').innerHTML=`${mm[1]}<sub>${mm[2]}</sub>`; }
     const target=Math.max(-50,Math.min(50,100*(r.me-r.off-r.disp)));
-    if(steady&&Math.abs(target)<50){ r.cz=r.cz==null?target:r.cz+(target-r.cz)*(1-Math.exp(-dt/0.2)); }
+    if(steady&&Math.abs(target)<50){ r.cz=r.cz==null?target:r.cz+(target-r.cz)*(1-Math.exp(-dt/tsm().cz)); }
     if(r.cz!=null){ $('tNeedle').setAttribute('transform',`rotate(${(r.cz*T_DEG).toFixed(2)} ${T_CX} ${T_CY})`);
-      if(now-(r.tTxt||0)>250){ r.tTxt=now; const cr=Math.round(r.cz); $('tCents').textContent=(cr>0?'+':cr<0?'−':'')+Math.abs(cr)+'¢'; $('tHz').textContent=(440*2**((r.me-69)/12)).toFixed(1)+' Hz'; }
+      if(now-(r.tTxt||0)>300){ r.tTxt=now; const cr=Math.round(r.cz); $('tCents').textContent=(cr>0?'+':cr<0?'−':'')+Math.abs(cr)+'¢'; $('tHz').textContent=(440*2**((r.me-69)/12)).toFixed(1)+' Hz'; }
       // label with a little patience, so it doesn't flicker
-      const a=Math.abs(r.cz), zone=a<=10?'ok':a<=25?(r.cz>0?'near+':'near-'):(r.cz>0?'far+':'far-');
-      if(zone!==r.zone){ if(!r.zc||r.zc.v!==zone) r.zc={v:zone,since:now}; else if(now-r.zc.since>300||r.zone==null){ r.zone=zone; r.zc=null;
+      // green within the tolerance, yellow up to twice it, red past that — with a 3¢ margin so it doesn't flip back and forth on a border
+      const a=Math.abs(r.cz), wasOk=r.zone==='ok', wasFar=/far/.test(r.zone||''), T=st.tol, mg=Math.max(1.5,T*0.2), okLim=wasOk?T+mg:T-mg, farLim=wasFar?2*T-mg:2*T+mg;
+      const zone=a<=okLim?'ok':a<=farLim?(r.cz>0?'near+':'near-'):(r.cz>0?'far+':'far-');
+      if(zone!==r.zone){ if(!r.zc||r.zc.v!==zone) r.zc={v:zone,since:now}; else if(now-r.zc.since>tsm().pat||r.zone==null){ r.zone=zone; r.zc=null;
         tu.classList.remove('ok','near','far'); tu.classList.add(zone.replace(/[+-]/,''));
         $('tPill').textContent={ok:'✓ In tune','near+':'▲ A little sharp','near-':'▼ A little flat','far+':'▲ Sharp','far-':'▼ Flat'}[zone];
-        $('tZone').setAttribute('opacity',zone==='ok'?'1':'0'); } } else r.zc=null; }
+        tunerZone(zone); } } else r.zc=null; }
     tn.classList.remove('quiet'); tu.classList.remove('quiet'); }
   else if(now-(r.lastV||0)>350){ tn.classList.add('quiet'); tu.classList.add('quiet'); }
   drawTrace(r); r.raf=requestAnimationFrame(tunerLoop); }
 // a calm glowing wave that swells with how loud the mic is, just to show it hears you (flat when silent)
-function drawTrace(r){ const cv=$('tCv'), w=cv.clientWidth, h=cv.clientHeight; if(!w) return; const c=sized(cv,w,h), now=performance.now();
+function drawTrace(r){ if(st.trace==='on'){ drawPitchTrace(r); return; } drawWave(r); }
+// pitch trace: cents from the nearest note over the last 5 s, with the tolerance band (green) and twice it (yellow)
+function drawPitchTrace(r){ const cv=$('tCv'), w=cv.clientWidth, h=cv.clientHeight; if(!w) return; const c=sized(cv,w,h), now=performance.now(), X=t=>w-(now-t)/5000*w, Yc=v=>h/2-v/50*(h/2-6), T=st.tol;
+  c.fillStyle='rgba(255,197,51,.08)'; c.fillRect(0,Yc(2*T),w,Yc(-2*T)-Yc(2*T)); c.fillStyle='rgba(43,220,108,.16)'; c.fillRect(0,Yc(T),w,Yc(-T)-Yc(T));
+  c.fillStyle='#3a3b44'; c.fillRect(0,Math.round(h/2),w,1); c.font='500 11px Inter,sans-serif'; c.fillStyle='#8c8a97'; c.fillText('+'+T+'¢',6,Yc(T)-3); c.fillText('−'+T+'¢',6,Yc(-T)+12);
+  const path=()=>{ c.beginPath(); let on=false, prev=null; r.hist.forEach(o=>{ if(isNaN(o.c)){ on=false; prev=null; return; } if(prev!=null&&Math.abs(o.c-prev)>40) on=false; const x=X(o.t), yv=Yc(Math.max(-50,Math.min(50,o.c))); if(on) c.lineTo(x,yv); else { c.moveTo(x,yv); on=true; } prev=o.c; }); };
+  c.lineJoin='round'; c.lineCap='round'; c.save(); c.shadowColor='#ff7a1a'; c.shadowBlur=10; c.strokeStyle='rgba(255,122,26,.5)'; c.lineWidth=3.5; path(); c.stroke(); c.restore();
+  c.strokeStyle='#ffb07a'; c.lineWidth=1.8; path(); c.stroke(); }
+function drawWave(r){ const cv=$('tCv'), w=cv.clientWidth, h=cv.clientHeight; if(!w) return; const c=sized(cv,w,h), now=performance.now();
   const N=Math.min(r.ring.length,Math.round(r.sr*0.05)); let e=0; for(let k=0;k<N;k++){ const v=r.ring[(r.w-N+k+r.ring.length)%r.ring.length]; e+=v*v; }
   const lvl=r.paused?0:Math.min(1,Math.sqrt(e/N)*6); r.wa=(r.wa||0)+(lvl-(r.wa||0))*(lvl>(r.wa||0)?0.25:0.06);
   const A=(h/2-8)*r.wa, ph=now/1000*2.2;
@@ -1197,19 +1239,28 @@ $('recPause').addEventListener('click',()=>{ if(!rec) return; const r=rec; r.pau
   if(r.paused){ r.acc+=performance.now()-r.since; $('recPause').textContent='▶ Resume'; $('status').textContent='Paused — Resume to keep going, Stop to save, Cancel to throw it away.'; $('lvl').style.width='0%'; }
   else { r.since=performance.now(); $('recPause').textContent='❚❚ Pause'; $('status').textContent=r.replace?`Recording over ${r.replace.base} — Stop replaces it, Cancel keeps the original.`:'Recording — sing, then press Stop.'; } });
 $('recCancel').addEventListener('click',()=>{ if(rec) stopRec(true); });
+// ---- metronome: a click on every beat (accent on beat 1), scheduled ahead on the audio clock
+const MET_KEY='hum2midi_met'; try{ const m=JSON.parse(localStorage.getItem(MET_KEY)||'{}'); if(m.on) $('metro').checked=true; if(m.bpm) $('metBpm').value=m.bpm; }catch(e){}
+const saveMet=()=>{ try{ localStorage.setItem(MET_KEY,JSON.stringify({on:$('metro').checked,bpm:+$('metBpm').value})); }catch(e){} };
+$('metro').addEventListener('change',saveMet); $('metBpm').addEventListener('change',()=>{ $('metBpm').value=Math.max(40,Math.min(240,Math.round(+$('metBpm').value||100))); saveMet(); });
+function clickAt(ctx,t,accent){ const o=ctx.createOscillator(), g=ctx.createGain(); o.type='sine'; o.frequency.value=accent?1760:1175;
+  g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(accent?0.45:0.3,t+0.002); g.gain.exponentialRampToValueAtTime(0.001,t+0.06); o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t+0.08); }
+function startMetro(ctx,bpm){ const beat=60/bpm, M={bpm,beat,t0:ctx.currentTime+0.12,k:0}; M.next=M.t0;
+  const tick=()=>{ while(M.next<ctx.currentTime+0.2){ clickAt(ctx,M.next,M.k%4===0); M.next+=beat; M.k++; } }; tick(); M.iv=setInterval(tick,25); M.stop=()=>clearInterval(M.iv); return M; }
 async function startRec(replace){
   try{ stopPlay(); micTest(false); const ctx=ac(); const stream=await navigator.mediaDevices.getUserMedia({audio:micConstraints()});
     const src=ctx.createMediaStreamSource(stream), proc=ctx.createScriptProcessor(2048,1,1), mute=ctx.createGain(); mute.gain.value=0;
     const ring=new Float32Array(ctx.sampleRate); const chunks=[]; const t0=performance.now();
     const R={stream,src,proc,mute,chunks,ring,w:0,sr:ctx.sampleRate,hist:[],last:[],noise:0.01,off:0,me:null,disp:null,shown:null,good:false,raf:0,iv:0,paused:false,acc:0,since:performance.now(),replace};
     tunerReset();
-    proc.onaudioprocess=e=>{ if(R.paused) return; const d=e.inputBuffer.getChannelData(0); chunks.push(new Float32Array(d)); let pk=0;
+    proc.onaudioprocess=e=>{ if(R.firstT==null) R.firstT=e.playbackTime-2*e.inputBuffer.length/ctx.sampleRate; if(R.paused){ R.wasPaused=true; return; } const d=e.inputBuffer.getChannelData(0); chunks.push(new Float32Array(d)); let pk=0;
       for(let i=0;i<d.length;i++){ ring[R.w]=d[i]; R.w=(R.w+1)%ring.length; const a=Math.abs(d[i]); if(a>pk) pk=a; } $('lvl').style.width=Math.min(100,pk*140)+'%'; };
     src.connect(proc); proc.connect(mute); mute.connect(ctx.destination);
     R.iv=setInterval(()=>{ const s=(R.acc+(R.paused?0:performance.now()-R.since))/1000; $('recT').textContent=`Stop  ${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`; },200);
     rec=R; $('rec').classList.add('on'); $('recT').textContent='Stop  0:00'; $('tuner').hidden=false; $('recPause').hidden=false; $('recCancel').hidden=false; $('recPause').textContent='❚❚ Pause'; showTakeBar();
     $('status').textContent=replace?`Recording over ${replace.base} — Stop replaces it, Cancel keeps the original.`:'Recording — sing, then press Stop.';
     R.raf=requestAnimationFrame(tunerLoop); if($('hear').checked) monitor(true);
+    if($('metro').checked) R.met=startMetro(ctx,Math.max(40,Math.min(240,+$('metBpm').value||100)));
   }catch(e){ toast(e&&e.name==='NotFoundError'?'That microphone is not connected — pick another one':'Microphone blocked — allow it and try again'); $('status').textContent='No microphone access.'; micTest(true); } }
 // ---- microphone picker: choose the input, remembered between launches, with a live level meter to check it
 const MIC_KEY='hum2midi_mic'; let micId=''; try{ micId=localStorage.getItem(MIC_KEY)||''; }catch(e){}
@@ -1248,12 +1299,14 @@ async function monitor(on){ if(!monOK) return; try{ const j=await (await fetch('
   $('hearS').textContent=j.on?`≈${j.delay_ms} ms`:''; if(on&&!j.on) toast('Could not open the headphones for “hear myself”'); }catch(e){} }
 $('hear').addEventListener('change',()=>{ try{ localStorage.setItem(HEAR_KEY,$('hear').checked?'1':'0'); }catch(e){} if(rec) monitor($('hear').checked); });
 addEventListener('pagehide',()=>{ if(monOK) navigator.sendBeacon('api/monitor?on=0'); });
-async function stopRec(discard){ const r=rec; rec=null; monitor(false); clearInterval(r.iv); cancelAnimationFrame(r.raf); r.proc.disconnect(); r.src.disconnect(); r.mute.disconnect(); r.stream.getTracks().forEach(t=>t.stop());
+async function stopRec(discard){ const r=rec; rec=null; monitor(false); if(r.met) r.met.stop(); clearInterval(r.iv); cancelAnimationFrame(r.raf); r.proc.disconnect(); r.src.disconnect(); r.mute.disconnect(); r.stream.getTracks().forEach(t=>t.stop());
   $('rec').classList.remove('on'); $('recT').textContent='Record'; $('tuner').hidden=true; $('recPause').hidden=true; $('recCancel').hidden=true; micTest(true);
   if(discard){ r.chunks.length=0; $('status').textContent=r.replace?`Cancelled — ${r.replace.base} was kept as it was.`:'Recording cancelled — nothing was saved.'; showTakeBar(); return; }
   const n=r.chunks.reduce((s,c)=>s+c.length,0); if(n<r.sr*0.3){ $('status').textContent='Too short — nothing saved.'; showTakeBar(); return; }
   const buf=ac().createBuffer(1,n,r.sr), ch=buf.getChannelData(0); let o=0; r.chunks.forEach(c=>{ ch.set(c,o); o+=c.length; });
   await run(buf,false);
+  // recorded to the click: the take's tempo is the click's, lined up with where the clicks fell
+  if(r.met&&!r.wasPaused&&r.firstT!=null){ const M=r.met; st.tempo={bpm:M.bpm,beat:M.beat,phase:(((M.t0-r.firstT)%M.beat)+M.beat)%M.beat,conf:1}; render(); }
   if(r.replace){ // record over: the new take takes the old one's name, and the old version's leftover files go
     const base=r.replace.base; await saveTake(wav(buf),'wav',base);
     try{ if(r.replace.file&&r.replace.file!==base+'.wav') await removeFiles(base,r.replace.file); await removeFiles(base,base+'.mid').catch(()=>{}); }catch(e){}
