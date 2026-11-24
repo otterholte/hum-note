@@ -521,7 +521,7 @@ const Hum = (() => {
       const rr=(i,o)=>m[i]+(o.oct||0)-tune.curve[i];
       // near-ties use the natural scale (in a minor key, the raised 7th is a passing colour, not a home note)
       const nat=new Uint8Array(12); if(key) key.scale.forEach((p,j)=>{ if(!(key.mode==='minor'&&j===7)) nat[p]=1; });
-      const bias=key?0.12+0.25*key.conf:0, ok=p=>!key||nat[((p%12)+12)%12];
+      const bias=key?(0.32+0.25*key.conf)*Math.max(0.5,opt.keyStrength??1):0, ok=p=>!key||nat[((p%12)+12)%12];
       const pick=c=>{ const f=Math.floor(c); let best=f,bv=1e9; for(const p of [f,f+1]){ const v=Math.abs(c-p)+(ok(p)?0:bias); if(v<bv){bv=v;best=p;} } return best; };
       const center=o=>{ const v=[]; for(let i=o.a;i<o.b;i++) if(voiced[i]) v.push(rr(i,o)); if(!v.length) return o.pitch; const md=median(v);
         let s=0,w=0; for(let i=o.a;i<o.b;i++){ if(!voiced[i]) continue; const x=rr(i,o); if(Math.abs(x-md)>1.6) continue; const wt=F.stable[i]>=1?1:F.stable[i]>0?0.4:0.15; s+=wt*x; w+=wt; } return w?s/w:md; };
@@ -537,12 +537,13 @@ const Hum = (() => {
         // otherwise, with no clear resting point (wide vibrato), the middle of the swing is the note
         const vi=[]; for(let i=o.a;i<o.b;i++) if(voiced[i]) vi.push(rr(i,o));
         const ed=vi.length>=8?[...vi.slice(0,3),...vi.slice(-3)]:[], qe=ed.length?Math.round(median(ed)):0;
-        if(ed.length&&ed.every(x=>Math.abs(x-qe)<0.65)) q=qe; else if(qv<0.4*tw) return center(o);
+        const share=vi.filter(x=>Math.abs(x-qe)<0.5).length/(vi.length||1);
+        if(ed.length&&ed.every(x=>Math.abs(x-qe)<0.65)&&share>=0.35) q=qe; else if(qv<0.4*tw) return center(o);
         let s=0,w=0; for(let i=o.a;i<o.b;i++){ if(!voiced[i]) continue; const x=rr(i,o); if(Math.abs(x-q)>0.75) continue; const wt=F.stable[i]>=1?1:F.stable[i]>0?0.4:0.15; s+=wt*x; w+=wt; }
         return w?s/w:center(o); };
       // 0) a short piece right next to a held note that never actually rests on its own pitch is part of that
       //    note's wobble (vibrato, a flick) — fold it in; a real quick note is pulled back out in step c
-      const settledAway=(o,P)=>{ let k=0; for(let i=o.a;i<o.b;i++) if(voiced[i]&&F.stable[i]>=1&&Math.abs(rr(i,o)-P)>0.5) k++; return k*F.dt; };
+      const settledAway=(o,P)=>{ let k=0,far=0; for(let i=o.a;i<o.b;i++){ if(!voiced[i]) continue; const d=Math.abs(rr(i,o)-P); if(F.stable[i]>=1&&d>0.5) k++; if(d>1.4) far++; } return far*F.dt>=0.08?1:k*F.dt; };
       const touch=(p,o)=>{ if(o.cut||o.a-p.b>3) return false; for(let i=p.b;i<o.a;i++) if(!voiced[i]) return false;
         return !(dsMin(p.b-2,o.a+3)<Math.min(dsMax(p.b-10,p.b),dsMax(o.a,o.a+10))-7); };
       for(let pass=0;pass<2;pass++){ const nl=[];
@@ -562,6 +563,19 @@ const Hum = (() => {
         list.forEach(j=>{ if(j===o||j.b-j.a<4||Math.abs(tOf(j)-tOf(o))>1.5) return; const fr=j.bs-Math.round(j.bs); if(Math.abs(fr)<0.35) nb.push([fr,j.b-j.a]); });
         let off=0; if(nb.length>=2){ nb.sort((x,y)=>x[0]-y[0]); const W=nb.reduce((a,x)=>a+x[1],0); let acc=0; for(const [fr,w] of nb){ acc+=w; if(acc>=W/2){ off=fr; break; } } }
         o.pitch=pick(o.bs-Math.max(-0.3,Math.min(0.3,off))); });
+      // a2) one "note" that clearly sits on two different pitches (each held 0.1 s+) is two notes, like a listener hears it
+      { const PL=Math.round(0.1/F.dt), out2=[];
+        list.forEach(o=>{ if(o.b-o.a<2*PL){ out2.push(o); return; }
+          const pl=[]; let i=o.a;
+          while(i<o.b){ if(!voiced[i]){ i++; continue; } const q=Math.round(rr(i,o)); let e=i; const vals=[];
+            while(e<o.b&&(!voiced[e]||Math.abs(rr(e,o)-q)<0.45)){ if(voiced[e]) vals.push(rr(e,o)); e++; }
+            if(vals.length>=PL) pl.push({a:i,b:e,q:pick(median(vals))}); i=Math.max(e,i+1); }
+          // a pitch the voice only passes through on its way to the next one (a scoop or slide) isn't a note
+          const pass=(x,k)=>{ const nx=pl[k+1]; if(!nx) return false; const dir=Math.sign(nx.q-x.q), j=Math.max(o.a,x.a-8); for(let q=j;q<x.a;q++) if(voiced[q]) return (rr(x.a,o)-rr(q,o))*dir>0.8; return false; };
+          const pl2=pl.filter((x,k)=>!pass(x,k)), steps=pl2.filter((x,k)=>k===0||x.q!==pl2[k-1].q);
+          if(steps.length<2||steps.every(x=>x.q===o.pitch)){ out2.push(o); return; }
+          let st0=o.a; steps.forEach((x,k)=>{ const nx=steps[k+1], end=nx?Math.round((x.b+nx.a)/2):o.b; out2.push({...o,pitch:x.q,a:st0,b:end,cut:k?0:o.cut,bs:x.q}); st0=end; }); });
+        list=out2; }
       // b) re-join a held note split around a vibrato swing (no break in the voice, no new syllable)
       const joined=[];
       for(const o of list){ const p=joined[joined.length-1];
@@ -573,7 +587,7 @@ const Hum = (() => {
       list=joined;
       // c) one-way excursions inside a held note
       const out=[];
-      for(const o of list){
+      for(let li=0;li<list.length;li++){ const o=list[li], prevSame=li>0&&list[li-1].pitch===o.pitch&&o.a-list[li-1].b<=3;
         if(o.b-o.a<Math.round(0.2/F.dt)){ out.push(o); continue; }
         const P=base(o), dev=i=>voiced[i]?rr(i,o)-P:0;
         const pieces=[]; let cur=o.a;
@@ -584,7 +598,7 @@ const Hum = (() => {
           if(pk<1.5) continue;
           // must leave from and return to the held note
           let before=0,after=0; for(let q=s-1;q>=o.a&&q>=s-12;q--) if(voiced[q]&&Math.abs(dev(q))<0.8) before++; for(let q=e;q<o.b&&q<e+12;q++) if(voiced[q]&&Math.abs(dev(q))<0.8) after++;
-          if(before<3||after<3) continue;
+          if((before<3&&!(prevSame&&s-o.a<=4))||after<3) continue;
           // steady wobble around it already? -> vibrato
           const W=Math.round(0.3/F.dt), sm=q=>{ let a=0,k=0; for(let j=q-1;j<=q+1;j++) if(j>=o.a&&j<o.b&&voiced[j]){a+=dev(j);k++;} return k?a/k:0; };
           const ext=[]; for(let q=Math.max(o.a+2,s-W);q<Math.min(o.b-2,e+W);q++){ if(q>=s-2&&q<e+2) continue; const v=sm(q); if(Math.abs(v)<0.3||Math.abs(v)>=1) continue;
