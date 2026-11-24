@@ -52,3 +52,7 @@ tools/listen-test/ob_*/
 tools/listen-test/*.log
 tools/listen-test/benchv/
 tools/listen-test/out_benchv/
+tools/listen-test/csd_mid/
+tools/listen-test/meter_csd.json
+tools/listen-test/nottingham_src/
+tools/listen-test/nott.json
