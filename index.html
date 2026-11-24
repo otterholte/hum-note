@@ -31,6 +31,9 @@ button:focus-visible,.file:focus-within,input:focus-visible,select:focus-visible
 .takebar b{color:var(--ink);font-weight:600}
 .hearL{display:inline-flex;gap:8px;align-items:center;min-height:44px;padding:0 14px;border:1px solid var(--line);border-radius:12px;background:var(--panel);font-weight:600;font-size:15px;cursor:pointer}
 .hearL input{width:20px;height:20px;margin:0}
+.micRow label{font-weight:600;font-size:15px}
+.micRow select{font:500 15px/1 Inter,sans-serif;min-height:44px;padding:0 12px;border-radius:12px;border:1px solid var(--line);background:var(--panel);color:var(--ink);max-width:100%;min-width:0;flex:0 1 340px}
+.micRow .meter{flex:0 1 160px;min-width:80px;margin:0}.micRow .meter i{background:var(--ok)}
 .recbtn .dot{width:12px;height:12px;border-radius:50%;background:var(--acc)}
 .recbtn.on{background:var(--acc);border-color:var(--acc);color:#fff}.recbtn.on .dot{background:#fff;animation:pulse 1s infinite}
 @keyframes pulse{50%{opacity:.3}}
@@ -99,6 +102,12 @@ canvas{display:block}
     <label class="hearL" id="hearL" hidden><input type="checkbox" id="hear"> Hear myself while recording <span class="status" id="hearS"></span></label>
     <button id="demo" type="button">Sample take</button>
     <span class="status" id="status"></span>
+  </div>
+  <div class="load micRow">
+    <label for="mic">Microphone</label>
+    <select id="mic"><option value="">Windows default</option></select>
+    <div class="meter" title="Live input level — it should jump when you sing"><i id="micLvl"></i></div>
+    <span class="status" id="micS"></span>
   </div>
   <div class="load takebar" id="takeBar" hidden>
     <span class="status">Current take: <b id="takeName"></b></span>
@@ -890,7 +899,7 @@ $('recPause').addEventListener('click',()=>{ if(!rec) return; const r=rec; r.pau
   else { r.since=performance.now(); $('recPause').textContent='❚❚ Pause'; $('status').textContent=r.replace?`Recording over ${r.replace.base} — Stop replaces it, Cancel keeps the original.`:'Recording — sing, then press Stop.'; } });
 $('recCancel').addEventListener('click',()=>{ if(rec) stopRec(true); });
 async function startRec(replace){
-  try{ stopPlay(); const ctx=ac(); const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false,channelCount:1}});
+  try{ stopPlay(); micTest(false); const ctx=ac(); const stream=await navigator.mediaDevices.getUserMedia({audio:micConstraints()});
     const src=ctx.createMediaStreamSource(stream), proc=ctx.createScriptProcessor(2048,1,1), mute=ctx.createGain(); mute.gain.value=0;
     const ring=new Float32Array(ctx.sampleRate); const chunks=[]; const t0=performance.now();
     const R={stream,src,proc,mute,chunks,ring,w:0,sr:ctx.sampleRate,hist:[],last:[],noise:0.01,off:0,me:null,disp:null,shown:null,good:false,raf:0,iv:0,paused:false,acc:0,since:performance.now(),replace};
@@ -902,7 +911,35 @@ async function startRec(replace){
     rec=R; $('rec').classList.add('on'); $('recT').textContent='Stop  0:00'; $('tuner').hidden=false; $('recPause').hidden=false; $('recCancel').hidden=false; $('recPause').textContent='❚❚ Pause'; showTakeBar();
     $('status').textContent=replace?`Recording over ${replace.base} — Stop replaces it, Cancel keeps the original.`:'Recording — sing, then press Stop.';
     R.raf=requestAnimationFrame(tunerLoop); if($('hear').checked) monitor(true);
-  }catch(e){ toast('Microphone blocked — allow it in the address bar and try again'); $('status').textContent='No microphone access.'; } }
+  }catch(e){ toast(e&&e.name==='NotFoundError'?'That microphone is not connected — pick another one':'Microphone blocked — allow it and try again'); $('status').textContent='No microphone access.'; micTest(true); } }
+// ---- microphone picker: choose the input, remembered between launches, with a live level meter to check it
+const MIC_KEY='hum2midi_mic'; let micId=''; try{ micId=localStorage.getItem(MIC_KEY)||''; }catch(e){}
+const micConstraints=()=>({echoCancellation:false,noiseSuppression:false,autoGainControl:false,channelCount:1,...(micId?{deviceId:{exact:micId}}:{})});
+let MT=null; // the level-meter test stream (only while not recording and the window is visible)
+async function micTest(on){
+  if(MT){ const m=MT; MT=null; cancelAnimationFrame(m.raf); try{ m.src.disconnect(); }catch(e){} m.stream.getTracks().forEach(t=>t.stop()); $('micLvl').style.width='0%'; }
+  if(!on||rec||document.hidden) return;
+  const tok={}; MT=tok;
+  try{ const stream=await navigator.mediaDevices.getUserMedia({audio:micConstraints()});
+    if(MT!==tok||rec){ stream.getTracks().forEach(t=>t.stop()); return; }
+    const ctx=ac(), src=ctx.createMediaStreamSource(stream), an=ctx.createAnalyser(); an.fftSize=2048; src.connect(an);
+    const buf=new Float32Array(an.fftSize); Object.assign(tok,{stream,src,raf:0});
+    const tr=stream.getAudioTracks()[0]; $('micS').textContent=ctx.state==='running'?(tr?'Listening: '+(tr.label||'microphone'):''):'Click anywhere to start the level meter.';
+    let peak=0; const loop=()=>{ an.getFloatTimeDomainData(buf); let pk=0; for(let i=0;i<buf.length;i++){ const a=Math.abs(buf[i]); if(a>pk) pk=a; }
+      peak=Math.max(pk,peak*0.9); $('micLvl').style.width=Math.min(100,peak*140)+'%'; tok.raf=requestAnimationFrame(loop); };
+    loop(); await listMics();
+  }catch(e){ if(MT===tok) MT=null;
+    if(e&&(e.name==='NotFoundError'||e.name==='OverconstrainedError')&&micId){ micId=''; try{ localStorage.removeItem(MIC_KEY); }catch(_){} $('micS').textContent='That microphone is gone — using the Windows default.'; await listMics(); micTest(true); }
+    else $('micS').textContent='No microphone access — allow it when asked.'; } }
+async function listMics(){ let devs=[]; try{ devs=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='audioinput'&&d.deviceId!=='default'&&d.deviceId!=='communications'); }catch(e){}
+  const sel=$('mic'); sel.innerHTML='<option value="">Windows default</option>'+devs.map((d,i)=>`<option value="${esc(d.deviceId)}">${esc(d.label||'Microphone '+(i+1))}</option>`).join('');
+  sel.value=devs.some(d=>d.deviceId===micId)?micId:''; }
+$('mic').addEventListener('change',()=>{ micId=$('mic').value; try{ localStorage.setItem(MIC_KEY,micId); }catch(e){} if(!rec) micTest(true); });
+navigator.mediaDevices&&navigator.mediaDevices.addEventListener('devicechange',()=>{ listMics(); });
+document.addEventListener('visibilitychange',()=>{ if(!rec) micTest(!document.hidden); });
+// audio can only start after a click; then the meter wakes up
+document.addEventListener('pointerdown',()=>{ if(AC&&AC.state==='suspended'){ AC.resume().then(()=>{ if(MT&&MT.stream){ const tr=MT.stream.getAudioTracks()[0]; $('micS').textContent='Listening: '+(tr&&tr.label||'microphone'); } }); } },true);
+listMics().then(()=>micTest(true));
 // 'Hear myself': the app's helper plays your mic into your headphones through Windows' direct audio path (~20 ms).
 // It only runs while recording, because it takes over the headphone output.
 let monOK=false; const HEAR_KEY='hum2midi_hear';
@@ -913,7 +950,7 @@ async function monitor(on){ if(!monOK) return; try{ const j=await (await fetch('
 $('hear').addEventListener('change',()=>{ try{ localStorage.setItem(HEAR_KEY,$('hear').checked?'1':'0'); }catch(e){} if(rec) monitor($('hear').checked); });
 addEventListener('pagehide',()=>{ if(monOK) navigator.sendBeacon('api/monitor?on=0'); });
 async function stopRec(discard){ const r=rec; rec=null; monitor(false); clearInterval(r.iv); cancelAnimationFrame(r.raf); r.proc.disconnect(); r.src.disconnect(); r.mute.disconnect(); r.stream.getTracks().forEach(t=>t.stop());
-  $('rec').classList.remove('on'); $('recT').textContent='Record'; $('tuner').hidden=true; $('recPause').hidden=true; $('recCancel').hidden=true;
+  $('rec').classList.remove('on'); $('recT').textContent='Record'; $('tuner').hidden=true; $('recPause').hidden=true; $('recCancel').hidden=true; micTest(true);
   if(discard){ r.chunks.length=0; $('status').textContent=r.replace?`Cancelled — ${r.replace.base} was kept as it was.`:'Recording cancelled — nothing was saved.'; showTakeBar(); return; }
   const n=r.chunks.reduce((s,c)=>s+c.length,0); if(n<r.sr*0.3){ $('status').textContent='Too short — nothing saved.'; showTakeBar(); return; }
   const buf=ac().createBuffer(1,n,r.sr), ch=buf.getChannelData(0); let o=0; r.chunks.forEach(c=>{ ch.set(c,o); o+=c.length; });
