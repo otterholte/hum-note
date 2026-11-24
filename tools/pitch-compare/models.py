@@ -17,9 +17,8 @@ _cache = {}
 
 
 def _crepe(size):
-    import torchcrepe
-
     def run(x, device):
+        import torchcrepe  # only needed when CREPE is actually used
         a = torch.from_numpy(x)[None].to(device)
         with torch.inference_mode():
             f0, per = torchcrepe.predict(a, SR, hop_length=160, fmin=50, fmax=1100, model=size,

@@ -34,3 +34,8 @@ __pycache__/
 .claude/settings.local.json
 icon.old.*
 tools/listen-test/sources/
+tools/listen-test/humtrans_src/
+tools/listen-test/ht/*
+!tools/listen-test/ht/index.json
+tools/listen-test/htx/*
+!tools/listen-test/htx/index.json
