@@ -497,7 +497,7 @@ const Hum = (() => {
       // energy dips inside voiced stretches (legato "la-la" on one pitch)
       for(let i=a+6;i<b-6;i++){
         let L=-99,R=-99; for(let q=i-12;q<i;q++) if(q>=a) L=Math.max(L,ds[q]); for(let q=i+1;q<=i+12;q++) if(q<b) R=Math.max(R,ds[q]);
-        if(ds[i]<L-7&&ds[i]<R-7&&ds[i]<=ds[i-1]&&ds[i]<=ds[i+1]&&!cuts.some(c=>Math.abs(c[0]-i)<8)) cuts.push([i,i+1]); }
+        if(ds[i]<L-5&&ds[i]<R-5&&ds[i]<=ds[i-1]&&ds[i]<=ds[i+1]&&!cuts.some(c=>Math.abs(c[0]-i)<8)) cuts.push([i,i+1]); }
       cuts.sort((x,y)=>x[0]-y[0]);
       const out=[]; let st=a; cuts.forEach(([c0,c1])=>{ out.push([st,c0,1]); st=c1; }); out.push([st,b,0]); out.forEach((p,i)=>p[2]=i>0?1:0); return out;
     }
