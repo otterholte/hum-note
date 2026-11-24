@@ -12,8 +12,9 @@
    COLOUR and TYPE: deep ink-violet ground at night / bright paper by day, one coral accent for notes, grey voice line; Familjen Grotesk + Inter.
    LAYOUT: modest title, then roll, transport, findings, notes, settings, export — one column that reads on a phone. */
 :root{color-scheme:light dark;
---bg:light-dark(#f7f6f3,#15131c);--panel:light-dark(#ffffff,#1e1b28);--ink:light-dark(#1b1824,#ece9f5);--mute:light-dark(#6c6878,#a29db3);
---line:light-dark(#e6e3ec,#2e2a3b);--row:light-dark(#efedf3,#1a1823);--acc:#ff5a4e;--acc2:light-dark(#2b7de9,#6aa8ff);--voice:light-dark(#8b8798,#8f8aa3);--ok:light-dark(#178a4c,#4ad08a)}
+--bg:light-dark(#f7f6f3,#1c1d21);--panel:light-dark(#ffffff,#232429);--ink:light-dark(#1b1824,#cfd0d5);--mute:light-dark(#6c6878,#8c8e97);
+--line:light-dark(#e6e3ec,#30323a);--row:light-dark(#efedf3,#202126);--acc:light-dark(#ff5a4e,#d9705f);--acc2:light-dark(#2b7de9,#7f9fcf);--voice:light-dark(#8b8798,#7c7e88);--ok:light-dark(#178a4c,#5fb385);
+--selbg:light-dark(#1b1824,#3a3c45);--selink:light-dark(#ffffff,#e6e7ea)}
 :root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
 *{box-sizing:border-box;min-width:0}
 [hidden]{display:none!important}
@@ -66,7 +67,7 @@ canvas{display:block}
 .set label{display:block;font-weight:600;font-size:15px;margin-bottom:6px}
 .seg{display:flex;flex-wrap:wrap;gap:6px}
 .seg button{padding:0 14px;font-weight:500}
-.seg button[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.seg button[aria-pressed=true]{background:var(--selbg);color:var(--selink);border-color:var(--selbg)}
 .hint{color:var(--mute);font-size:14px;margin:6px 0 0}
 .why{max-width:70ch}.why p{margin:0 0 10px}
 .small{font-size:13px;color:var(--mute)}
@@ -160,12 +161,14 @@ button.q,label.q{background:transparent;border-color:transparent}button.q:hover,
 #midiL{display:inline-flex;align-items:center;gap:8px}
 .recBar{margin-bottom:10px}.recBar .file{margin-left:auto;color:var(--mute)}
 .card{border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:2px 14px;margin:12px 0}
+.more{margin-left:auto}.more>summary{list-style:none;display:inline-flex;align-items:center;min-height:36px;padding:0 12px;border-radius:10px;cursor:pointer;font-weight:600;font-size:14px;color:var(--mute)}.more>summary::-webkit-details-marker{display:none}
+.more[open]{flex-basis:100%;margin-left:0}.moreBody{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;padding:8px 0 2px}
 .card .tools{border:0;background:none;padding:10px 0;margin:0;border-radius:0}.card .tools+.tools{border-top:1px solid var(--line)}
 .fold{border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:0 14px;margin:10px 0}
 .fold>summary{cursor:pointer;padding:12px 2px;font-weight:700}.fold[open]{padding-bottom:12px}
 .tips{margin:0;padding-left:18px;color:var(--mute);font-size:14px}.tips li{margin:0 0 6px}.tips b{color:var(--ink)}
 .transport .facts{margin:0 0 0 auto;display:flex;flex-wrap:wrap;gap:14px;color:var(--mute);font-size:14px}.transport .facts b{color:var(--ink);font-weight:700;font-size:14px}.transport .facts i{font-style:normal}
-.exportCard{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:12px 14px}.exportCard>b{margin-right:6px}.exportCard .hint{flex-basis:100%;margin:0}
+.exportCard{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:4px 0 0}.exportCard>b{margin-right:6px}.exportCard .hint{flex-basis:100%;margin:0}
 .seg button{min-height:36px;padding:0 12px;font-size:14px}
 #sampleNote{margin:6px 0 0}
 </style></head><body>
@@ -244,17 +247,21 @@ button.q,label.q{background:transparent;border-color:transparent}button.q:hover,
   <div class="tools" id="timing">
     <b>Timing</b>
     <span class="tempoV" id="tempoV">— BPM</span>
-    <div class="seg"><button type="button" id="tmDn" title="Slower">−</button><button type="button" id="tmUp" title="Faster">+</button><button type="button" id="tmHalf" title="Half as fast">½×</button><button type="button" id="tmDbl" title="Twice as fast">2×</button></div>
-    <div class="seg" id="segDiv" aria-label="Grid"><button type="button" data-v="1">1/4</button><button type="button" data-v="2">1/8</button><button type="button" data-v="4">1/16</button><button type="button" data-v="3">Triplets</button></div>
-    <label class="lever">Humanize <input type="range" id="qStr" min="10" max="100" step="5"> <output id="qStrV"></output></label>
     <button type="button" id="qBtn">Quantize</button>
+    <label class="lever">Humanize <input type="range" id="qStr" min="10" max="100" step="5"> <output id="qStrV"></output></label>
     <button type="button" id="qExact" class="q">Snap exactly</button>
+    <details class="more"><summary class="q">More ▾</summary><div class="moreBody">
+      <span class="status">Tempo</span><div class="seg"><button type="button" id="tmDn" title="Slower">−</button><button type="button" id="tmUp" title="Faster">+</button><button type="button" id="tmHalf" title="Half as fast">½×</button><button type="button" id="tmDbl" title="Twice as fast">2×</button></div>
+      <span class="status">Grid</span><div class="seg" id="segDiv" aria-label="Grid"><button type="button" data-v="1">1/4</button><button type="button" data-v="2">1/8</button><button type="button" data-v="4">1/16</button><button type="button" data-v="3">Triplets</button></div>
+    </div></details>
   </div>
   <div class="tools" id="vibBar">
     <b>Vibrato</b>
     <div class="seg" id="segVib"><button type="button" data-v="off">Ignore</button><button type="button" data-v="keep">Keep</button></div>
-    <div class="seg" id="segVibS" title="How big a swing counts as vibrato"><button type="button" data-v="0.4">Subtle</button><button type="button" data-v="0.7">Normal</button><button type="button" data-v="1.6">Wide only</button></div>
     <span class="status" id="vibS"></span>
+    <details class="more"><summary class="q">More ▾</summary><div class="moreBody">
+      <span class="status">Counts as vibrato</span><div class="seg" id="segVibS" title="How big a swing counts as vibrato"><button type="button" data-v="0.4">Subtle</button><button type="button" data-v="0.7">Normal</button><button type="button" data-v="1.6">Wide only</button></div>
+    </div></details>
   </div>
 </div>
 
@@ -289,19 +296,17 @@ button.q,label.q{background:transparent;border-color:transparent}button.q:hover,
 </details>
 
 <div class="score" id="score">
-  <div class="scoreHead"><b>Sheet music</b><button type="button" id="scorePlay" title="Plays the notes exactly as written, on the beat">▶ Play as written</button><span class="status" id="scoreInfo"></span><div class="seg" id="segTs"><button type="button" data-v="4">4/4</button><button type="button" data-v="3">3/4</button></div></div>
+  <div class="scoreHead"><b>Sheet music</b><button type="button" id="scorePlay" title="Plays the notes exactly as written, on the beat, on the piano">▶ Play as written</button><span class="status" id="scoreInfo"></span><details class="more"><summary class="q">More ▾</summary><div class="moreBody"><span class="status">Time</span><div class="seg" id="segTs"><button type="button" data-v="4">4/4</button><button type="button" data-v="3">3/4</button></div></div></details></div>
   <p class="status" id="scoreMsg"></p>
   <svg id="scoreSvg" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The notes as sheet music"></svg>
+  <button type="button" class="q" id="scoreAll" hidden>Show all ▾</button>
 </div>
 
-<div class="card exportCard">
-  <b>Take it with you</b>
-  <button class="primary" id="saveMid" type="button">Save MIDI</button>
+<details class="fold"><summary>Take it with you (Save MIDI)</summary><div class="exportCard"><button class="primary" id="saveMid" type="button">Save MIDI</button>
   <button id="copyNotes" type="button" class="q">Copy note list</button>
   <button id="copyB64" type="button" class="q">Copy MIDI as base64</button>
-  <p class="hint" id="saveHint">MIDI uses the tempo above with the beat on the bar lines, so it drops onto a DAW's grid. Kept vibrato goes in as pitch bend. Every take is saved as a .wav plus a .json of its notes.</p>
-</div>
-<details class="fold" open><summary>Saved takes</summary>
+  <p class="hint" id="saveHint">MIDI uses the tempo above with the beat on the bar lines, so it drops onto a DAW's grid. Kept vibrato goes in as pitch bend. Every take is saved as a .wav plus a .json of its notes.</p></div></details>
+<details class="fold"><summary>Saved takes</summary>
   <ul class="takes" id="takes"><li class="status">Choose a save folder to see your takes here.</li></ul>
 </details>
 <details class="fold why"><summary>Why it hears notes better than a tuner</summary>
@@ -1080,6 +1085,7 @@ function tKey(){ const T=st.tol; $('tKey').innerHTML=`<b style="color:var(--good
 seg('segTol','tol',()=>{ buildArc(true); if(rec&&rec.zone){ rec.zone=null; } tKey(); });
 seg('segSmooth','smooth'); seg('segTrace','trace',tKey); tKey();
 seg('segTs','ts',()=>drawScore());
+$('scoreAll').addEventListener('click',()=>{ SC.all=!SC.all; drawScore(); });
 $('scorePlay').addEventListener('click',playScore);
 seg('segVibS','vibSens',()=>{ addVib(st.notes); render(); resaveSoon(); });
 // ---- sheet music: the notes as a piano grand staff, redrawn after every change.
@@ -1130,10 +1136,11 @@ function drawScore(){
   const posX=[]; const barW=[];
   for(let b=0;b<bars;b++){ const starts=new Set(); staffs.forEach(S=>S.ev.forEach(e=>{ if(Math.floor(e.a/barLen)===b) starts.add(e.a); })); const xs=[...starts].sort((a,c)=>a-c);
     let x=14; const m={}; xs.forEach((a,i)=>{ m[a]=x; const nx=i+1<xs.length?xs[i+1]:(b+1)*barLen, d=nx-a; x+=18+15*Math.sqrt(d); }); posX.push(m); barW.push(x+6); }
-  const lines=[]; let cur=[], used=0;
+  let lines=[]; let cur=[], used=0;
   for(let b=0;b<bars;b++){ const extra=(lines.length===0&&!cur.length?tsW:0), avail=W-left-headW-(lines.length===0?tsW:0);
     if(cur.length&&used+barW[b]>avail){ lines.push(cur); cur=[]; used=0; } cur.push(b); used+=barW[b]+extra*0; }
   if(cur.length) lines.push(cur);
+  const allLines=lines.length; $('scoreAll').hidden=allLines<2; $('scoreAll').textContent=SC.all?'Show less ▴':`Show all ${allLines} lines ▾`; if(!SC.all) lines=lines.slice(0,1);
   const staffGap=11*sp, sysH=4*sp+staffGap+4*sp, sysGap=9*sp; let out=''; const H=lines.length*(sysH+sysGap)+2*sp;
   const ys=(S,step,top)=>top+(S.clef==='G'?0:4*sp+staffGap)+4*sp-(step-S.bottom)*sp/2;
   const txt=(x,y,t,size,extra='')=>`<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-size="${size}" ${extra}>${t}</text>`;
