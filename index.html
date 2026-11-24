@@ -78,6 +78,9 @@ canvas{display:block}
 .transport .status{font-variant-numeric:tabular-nums;min-width:5ch}
 #timing{margin:12px 0 0}.score{margin:10px 0 0;padding:12px 14px 6px;border:1px solid var(--line);border-radius:16px;background:var(--panel);overflow:hidden}
 .scoreHead{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin-bottom:4px}.scoreHead b{font-size:16px}
+#scClean[aria-pressed=true],#scChords[aria-pressed=true]{background:var(--selbg);color:var(--selink);border-color:var(--selbg)}
+.octBox{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);border-radius:12px;padding:2px}.octBox button{min-height:34px;padding:0 10px;border:0;background:transparent}.octBox span{font-size:13px;color:var(--mute);min-width:5.2em;text-align:center}
+#scoreSvg .chordSym{font:700 14px Inter,sans-serif;fill:var(--acc2)}
 .scoreHead .seg button{min-height:34px;padding:0 10px;font-size:14px}
 #scoreMsg:empty{display:none}
 #scoreSvg{display:block;max-width:100%}
@@ -296,7 +299,7 @@ button.q,label.q{background:transparent;border-color:transparent}button.q:hover,
 </details>
 
 <div class="score" id="score">
-  <div class="scoreHead"><b>Sheet music</b><button type="button" id="scorePlay" title="Plays the notes exactly as written, on the beat, on the piano">▶ Play as written</button><span class="status" id="scoreInfo"></span><details class="more"><summary class="q">More ▾</summary><div class="moreBody"><span class="status">Time</span><div class="seg" id="segTs"><button type="button" data-v="4">4/4</button><button type="button" data-v="3">3/4</button></div></div></details></div>
+  <div class="scoreHead"><b>Sheet music</b><button type="button" id="scorePlay" title="Plays the notes exactly as written, on the beat, on the piano">▶ Play as written</button><button type="button" id="scClean" aria-pressed="false" title="Tidies timing, drops slips, snaps stray notes into the key — on the sheet music only">✨ Clean up</button><span class="octBox"><button type="button" id="scDn" title="Melody down an octave">▼</button><span id="scOctV">8va</span><button type="button" id="scUp" title="Melody up an octave (into the treble clef)">▲</button></span><button type="button" id="scChords" aria-pressed="false" title="Adds chords that fit the whole tune, in the bass clef">🎹 Chords</button><span class="status" id="scoreInfo"></span><details class="more"><summary class="q">More ▾</summary><div class="moreBody"><span class="status">Time</span><div class="seg" id="segTs"><button type="button" data-v="4">4/4</button><button type="button" data-v="3">3/4</button></div><button type="button" id="scMidi" class="q">⤓ Save sheet music as MIDI</button></div></details></div>
   <p class="status" id="scoreMsg"></p>
   <svg id="scoreSvg" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The notes as sheet music"></svg>
   <button type="button" class="q" id="scoreAll" hidden>Show all ▾</button>
@@ -759,7 +762,7 @@ if(typeof module!=='undefined') module.exports=Hum;
 <script>
 {
 const $=id=>document.getElementById(id);
-const st={F:null,buf:null,res:null,notes:[],detected:null,edited:false,key:1,stick:10,tr:0,snd:'piano',hear:'both',ref:'a440',demo:true,pos:0,loop:null,sel:-1,tempo:null,div:2,qs:60,vib:'keep',vibSens:0.7,ts:4,tol:10,smooth:'voice',trace:'off',ver:0};
+const st={F:null,buf:null,res:null,notes:[],detected:null,edited:false,key:1,stick:10,tr:0,snd:'piano',hear:'both',ref:'a440',demo:true,pos:0,loop:null,sel:-1,tempo:null,div:2,qs:60,vib:'keep',vibSens:0.7,ts:4,tol:10,smooth:'voice',trace:'off',ver:0,scoreClean:false,scoreChords:false,scoreOct:0};
 try{ const s=JSON.parse(localStorage.getItem('hum2midi')||'{}'); if(!localStorage.getItem('hum2midi_v5')){ delete s.smooth; localStorage.setItem('hum2midi_v5','1'); } ['key','stick','snd','hear','ref','div','qs','vib','vibSens','ts','tol','smooth','trace'].forEach(k=>{ if(s[k]!=null) st[k]=s[k]; }); }catch(e){}
 const saveSet=()=>{ try{ localStorage.setItem('hum2midi',JSON.stringify({key:st.key,stick:st.stick,snd:st.snd,hear:st.hear,ref:st.ref,div:st.div,qs:st.qs,vib:st.vib,vibSens:st.vibSens,ts:st.ts,tol:st.tol,smooth:st.smooth,trace:st.trace})); }catch(e){} };
 const toast=t=>{ const el=$('toast'); el.textContent=t; el.classList.add('show'); clearTimeout(toast.h); toast.h=setTimeout(()=>el.classList.remove('show'),3200); };
@@ -1086,6 +1089,13 @@ seg('segTol','tol',()=>{ buildArc(true); if(rec&&rec.zone){ rec.zone=null; } tKe
 seg('segSmooth','smooth'); seg('segTrace','trace',tKey); tKey();
 seg('segTs','ts',()=>drawScore());
 $('scoreAll').addEventListener('click',()=>{ SC.all=!SC.all; drawScore(); });
+$('scClean').addEventListener('click',()=>{ st.scoreClean=!st.scoreClean; $('scClean').setAttribute('aria-pressed',st.scoreClean); stopScore(); drawScore(); });
+$('scChords').addEventListener('click',()=>{ st.scoreChords=!st.scoreChords; $('scChords').setAttribute('aria-pressed',st.scoreChords); stopScore(); drawScore(); });
+$('scUp').addEventListener('click',()=>{ st.scoreOct=Math.min(3,(+st.scoreOct||0)+1); stopScore(); drawScore(); });
+$('scDn').addEventListener('click',()=>{ st.scoreOct=Math.max(-3,(+st.scoreOct||0)-1); stopScore(); drawScore(); });
+$('scMidi').addEventListener('click',async()=>{ const L=SC.last; if(!L||!L.N.length){ toast('No sheet music yet'); return; } const T=st.tempo;
+  const b=Hum.toMidi(L.N.map(o=>({pitch:Math.max(0,Math.min(127,o.p)),start:o.u0*L.unit,end:o.u1*L.unit,vel:o.n.vel||90})),{bpm:T?T.bpm:120,timeSig:st.ts||4,bends:false});
+  const nm=(curName||'hum_'+stamp())+'_sheet.mid'; try{ const where=await writeFile(nm,new Blob([b],{type:'audio/midi'})); toast(`Saved ${nm}`+(where==='folder'?' to your recordings folder':' to Downloads')); }catch(e){ toast('Could not save'); } });
 $('scorePlay').addEventListener('click',playScore);
 seg('segVibS','vibSens',()=>{ addVib(st.notes); render(); resaveSoon(); });
 // ---- sheet music: the notes as a piano grand staff, redrawn after every change.
@@ -1114,6 +1124,58 @@ function staffEvents(ns,bars,barLen){
       const last=pos+v>=s.b; out.push({a:pos,d:v,rest,ps:s.ps,tieIn:pos===s.a?s.cont:s.ps,tieOut:last?s.next:s.ps,whole:rest&&v===barLen}); pos+=v; } });
   return out;
 }
+// ---- sheet-music tools. They change only what the sheet music shows and plays, never the take or its notes.
+// Positions are in 16th notes (u0..u1), pitches are MIDI (already transposed).
+function scoreScale(){ const k=st.res&&st.res.key; if(!k) return null; const tonic=((k.tonic+st.tr)%12+12)%12, minor=k.mode==='minor';
+  return {tonic,minor,pcs:(minor?[0,2,3,5,7,8,10,11]:[0,2,4,5,7,9,11]).map(x=>(x+tonic)%12)}; }
+// split overlapping notes into separate lines (melody on top), so each can be tidied on its own
+function voicesOf(N){ const L=[]; [...N].sort((a,b)=>a.u0-b.u0||b.p-a.p).forEach(o=>{ let v=L.find(l=>l[l.length-1].u1<=o.u0); if(!v){ v=[]; L.push(v); } v.push(o); }); return L; }
+// Clean up: what a musician writing it down would do
+function chordLabel(c){ const q=c.nm.includes('°')?'dim':(c.nm===c.nm.toLowerCase()?'m':''); return Hum.FLATS[c.root]+(q==='dim'?'°':q); }
+function cleanupScore(N,barLen){ const sc=scoreScale(), inKey=p=>!sc||sc.pcs.includes(((p%12)+12)%12);
+  const out=[];
+  voicesOf(N).forEach(V=>{ let M=V.map(o=>({...o}));
+    // 1) blips: a 16th-note hit that leaves and comes straight back (or just stops) is a slip, not a note
+    M=M.filter((o,k)=>{ const p=M[k-1], q=M[k+1]; if(o.u1-o.u0>1) return true; const nb=[p,q].filter(Boolean); return !nb.length||nb.some(x=>x.p===o.p)||!(nb.every(x=>Math.abs(x.p-o.p)>=1)&&(!p||!q||p.p===q.p)); });
+    // 2) onsets: a note a 16th off the 8th-note grid moves onto it (toward where there's room)
+    M.forEach((o,k)=>{ if(o.u0%2===0) return; const p=M[k-1]; o.u0=(p&&p.u1>o.u0-1)?o.u0+1:o.u0-1; if(o.u1<=o.u0) o.u1=o.u0+1; });
+    // 3) out-of-key notes that are short go to the nearest note in the key (toward where the tune goes next)
+    M.forEach((o,k)=>{ if(inKey(o.p)||o.u1-o.u0>=8) return; const q=M[k+1], dir=q?Math.sign(q.p-o.p)||1:-1; o.p=inKey(o.p+dir)?o.p+dir:inKey(o.p-dir)?o.p-dir:o.p; });
+    // 4) the same note repeated with no gap, the second only a 16th long, is one note
+    M=M.reduce((a,o)=>{ const p=a[a.length-1]; if(p&&p.p===o.p&&o.u0-p.u1<=0&&o.u1-o.u0<=1){ p.u1=o.u1; return a; } a.push(o); return a; },[]);
+    // 5) legato and tidy lengths: fill tiny gaps, then round lengths to plain values that fit before the next note
+    M.forEach((o,k)=>{ const q=M[k+1], room=q?q.u0-o.u0:1e9; let d=o.u1-o.u0; if(q&&q.u0-o.u1<=2&&q.u0-o.u1>0) d=room;
+      const vals=[1,2,3,4,6,8,12,16].filter(v=>v<=room); d=vals.reduce((b,v)=>Math.abs(v-d)<Math.abs(b-d)?v:b,vals[0]||1); o.u1=o.u0+d; });
+    // 6) the last note of a phrase (a rest of a beat or more follows) rings to the next beat
+    M.forEach((o,k)=>{ const q=M[k+1]; if(q&&q.u0-o.u1<4) return; const nb=Math.ceil(o.u1/4)*4; if(!q||q.u0>=nb) o.u1=Math.max(o.u1,nb); });
+    out.push(...M); });
+  return out; }
+// Octave: shift the melody into the treble clef (Auto = centre it around C5), or by a set number of octaves
+function scoreOctave(N){ if(st.scoreOct==='auto'){ const ps=N.map(o=>o.p).sort((a,b)=>a-b), md=ps[ps.length>>1]; const k=Math.round((72-md)/12); return {N:N.map(o=>({...o,p:o.p+12*k})),k}; }
+  const k=+st.scoreOct||0; return {N:k?N.map(o=>({...o,p:o.p+12*k})):N,k}; }
+// Chords: one chord per bar (or half bar when the tune clearly changes harmony), chosen for the whole piece at once
+function scoreChords(N,barLen){ const sc=scoreScale(); if(!sc||!N.length) return {notes:[],names:[]};
+  const T=sc.tonic, deg=sc.minor?[[0,'i',[0,3,7]],[5,'iv',[5,8,0]],[7,'V',[7,11,2]],[8,'VI',[8,0,3]],[3,'III',[3,7,10]],[10,'VII',[10,2,5]],[2,'ii°',[2,5,8]]]
+                                  :[[0,'I',[0,4,7]],[5,'IV',[5,9,0]],[7,'V',[7,11,2]],[9,'vi',[9,0,4]],[2,'ii',[2,5,9]],[4,'iii',[4,7,11]]];
+  const C=deg.map(([r,nm,iv])=>({nm,root:(r+T)%12,pcs:iv.map(x=>(x+T)%12),prior:{I:.5,i:.5,IV:.3,iv:.3,V:.4,vi:.1,VI:.1,ii:.05,iii:-.25,III:-.1,VII:-.1,'ii°':-.4}[nm]||0}));
+  const end=Math.max(...N.map(o=>o.u1)), bars=Math.ceil(end/barLen), half=barLen/2;
+  const fit=(c,a,b)=>{ let s=0; N.forEach(o=>{ const ov=Math.min(o.u1,b)-Math.max(o.u0,a); if(ov<=0) return; const strong=(o.u0%barLen===0||o.u0%barLen===half)&&o.u0>=a?1.5:1, pc=((o.p%12)+12)%12;
+      s+=ov*strong*(c.pcs.includes(pc)?1:sc.pcs.includes(pc)?-0.35:-0.7); }); return s/Math.max(1,b-a)*4; };
+  const segs=[]; for(let b=0;b<bars;b++){ const a=b*barLen; const whole=C.map(c=>fit(c,a,a+barLen)), h1=C.map(c=>fit(c,a,a+half)), h2=C.map(c=>fit(c,a+half,a+barLen));
+    const bw=Math.max(...whole), bh=Math.max(...h1)+Math.max(...h2); if(bh/2>bw+1.2&&barLen%2===0) segs.push([a,a+half],[a+half,a+barLen]); else segs.push([a,a+barLen]); }
+  const move={I:{IV:.3,V:.3,vi:.2,ii:.2},IV:{V:.4,I:.25,ii:.15},V:{I:.6,vi:.2},vi:{IV:.3,ii:.3,V:.1},ii:{V:.45},iii:{vi:.3,IV:.2},i:{iv:.3,V:.3,VI:.2,VII:.2},iv:{V:.4,i:.25},VI:{iv:.2,VII:.3,III:.2},VII:{III:.3,i:.25},III:{VI:.3,iv:.2},'ii°':{V:.4}};
+  // best path through the whole piece (Viterbi): fit to the tune + how chords like to move + start/end at home
+  let cost=C.map((c,j)=>fit(c,...segs[0])+c.prior+(j===0?.6:0)), back=[];
+  for(let i=1;i<segs.length;i++){ const nc=[], bk=[]; C.forEach((c,j)=>{ let bv=-1e9,bj=0; C.forEach((d,k)=>{ const v=cost[k]+((move[d.nm]||{})[c.nm]||0)+(k===j?-0.15:0); if(v>bv){bv=v;bj=k;} });
+      nc.push(bv+fit(c,...segs[i])+c.prior*0.5+(i===segs.length-1&&j===0?1.2:0)+(i===segs.length-2&&c.nm==='V'?0.3:0)); bk.push(bj); }); cost=nc; back.push(bk); }
+  let j=cost.indexOf(Math.max(...cost)); const path=[j]; for(let i=back.length-1;i>=0;i--){ j=back[i][j]; path.unshift(j); }
+  // voicing: root low in the bass, the chord close above it, each chord moving as little as possible from the last
+  const notes=[], names=[]; let prev=null; const mel=N.length?Math.min(...N.map(o=>o.p)):60, top=Math.min(60,mel-3);
+  path.forEach((ci,i)=>{ const c=C[ci], [a,b]=segs[i]; let r=36+((c.root-36)%12+12)%12; if(r>43) r-=12; names.push({u0:a,nm:c.nm,root:c.root});
+    const cands=[]; for(let base=44;base<=56;base++){ const v=c.pcs.map(pc=>{ let x=base; while(((x%12)+12)%12!==pc) x++; return x; }).sort((x,y)=>x-y); if(v[2]<=top&&v[0]>r+2) cands.push(v); }
+    const pick=cands.length?cands.reduce((A,B)=>{ const d=v=>prev?v.reduce((s,x,k)=>s+Math.abs(x-prev[k]),0):Math.abs(v[1]-52); return d(B)<d(A)?B:A; }):[r+12,r+16,r+19];
+    prev=pick; [r,...pick].forEach(p=>notes.push({u0:a,u1:b,p,n:{vel:52},vib:false,chord:1})); });
+  return {notes,names}; }
 var scorePb=null;
 function stopScore(){ if(scorePb){ scorePb.srcs.forEach(o=>{ try{ o.stop(); }catch(e){} }); clearTimeout(scorePb.to); scorePb=null; } $('scorePlay').textContent='▶ Play as written'; }
 async function playScore(){ if(scorePb){ stopScore(); return; } const L=SC.last; if(!L||!L.N.length) return; stopPlay(); const ctx=ac(); await loadPiano(); const t0=ctx.currentTime+0.12, srcs=[], keep=st.snd; st.snd='piano';
@@ -1126,8 +1188,11 @@ function drawScore(){
   if(!T||!notes.length){ svg.innerHTML=''; svg.setAttribute('height',0); msg.textContent=notes.length?'Sheet music appears once a tempo is found — set one with − + above.':'Sing something and the sheet music shows up here.'; return; }
   msg.textContent='';
   const unit=T.beat/4, ts=st.ts||4, barLen=ts*4, first=Math.min(...notes.map(n=>n.start)), bar0=T.phase+Math.floor((first-T.phase)/T.beat+0.25)*T.beat;
-  const N=notes.map(n=>{ let u0=Math.round((n.start-bar0)/unit), u1=Math.round((n.end-bar0)/unit); if(u0<0) u0=0; if(u1<=u0) u1=u0+1; return {u0,u1,p:n.pitch+st.tr,n,vib:st.vib==='keep'&&!!n.vib&&!n.vibOff}; });
-  SC.last={N,unit,barLen};
+  let N=notes.map(n=>{ let u0=Math.round((n.start-bar0)/unit), u1=Math.round((n.end-bar0)/unit); if(u0<0) u0=0; if(u1<=u0) u1=u0+1; return {u0,u1,p:n.pitch+st.tr,n,vib:st.vib==='keep'&&!!n.vib&&!n.vibOff}; });
+  if(st.scoreClean) N=cleanupScore(N,barLen);
+  const OC=scoreOctave(N); N=OC.N; $('scOctV').textContent=OC.k?`${OC.k>0?'+':''}${OC.k} oct`:'as sung';
+  const CH=st.scoreChords?scoreChords(N,barLen):{notes:[],names:[]}; N=N.concat(CH.notes);
+  SC.last={N,unit,barLen,CH};
   const bars=Math.max(1,Math.ceil(Math.max(...N.map(n=>n.u1))/barLen));
   const k0=st.res&&st.res.key, fifths=keyFifths(k0?{tonic:((k0.tonic+st.tr)%12+12)%12,mode:k0.mode}:null), KA=keyAlts(fifths);
   const staffs=[{clef:'G',ev:staffEvents(N.filter(n=>n.p>=60),bars,barLen),bottom:30,mid:34},{clef:'F',ev:staffEvents(N.filter(n=>n.p<60),bars,barLen),bottom:18,mid:22}];
@@ -1187,6 +1252,8 @@ function drawScore(){
             let ye=up?yh-3.4*sp:yl+3.4*sp; if(bm){ const G=bm.G, ext=G.map(f=>{ const st2=f.ps.map(p=>spell(p,fifths).step); return up?ys(S,Math.max(...st2),top)-3.2*sp:ys(S,Math.min(...st2),top)+3.2*sp; }); ye=up?Math.min(...ext):Math.max(...ext); e._ye=ye; }
             out+=`<line class="stem" x1="${sx.toFixed(1)}" x2="${sx.toFixed(1)}" y1="${(up?yl:yh).toFixed(1)}" y2="${ye.toFixed(1)}"/>`;
             if(!bm&&e.d<4){ const n=e.d===1?2:1; for(let k=0;k<n;k++){ const fy=ye+(up?k*6:-k*6); out+=`<path class="flag" d="M${sx} ${fy} q ${up?'9 6 7 15':'9 -6 7 -15'} q ${up?'0 -8 -7 -11':'0 8 -7 11'} z"/>`; } } } });
+        // chord symbols over the treble staff
+        if(S.clef==='G') CH.names.filter(c=>Math.floor(c.u0/barLen)===b).forEach(c=>{ const xx=isFinite(X(c.u0))?X(c.u0):bx+(c.u0-b*barLen)/barLen*bw+8; out+=txt(xx-4,ys(S,S.bottom+15,top),chordLabel(c),14,'class="chordSym"'); });
         // vibrato marks
         N.filter(o=>o.vib&&(o.p>=60)===(S.clef==='G')&&Math.floor(o.u0/barLen)===b).forEach(o=>{ const xa=X(o.u0)-4, xe=X(Math.min(o.u1,(b+1)*barLen)), xb=isFinite(xe)?xe-6:bx+bw-8; if(!isFinite(xa)) return;
           const top8=Math.max(...o.n?[S.bottom+8]:[0]), yv=Math.min(ys(S,S.bottom+11,top),ys(S,spell(o.p,fifths).step+7,top)); let d2=`M${xa.toFixed(1)} ${yv.toFixed(1)}`; for(let x=xa,k=0;x<xb;x+=4,k++) d2+=` L${(x+4).toFixed(1)} ${(yv+(k%2?2.2:-2.2)).toFixed(1)}`; out+=`<path class="tie" style="stroke-width:1.3" d="${d2}"/>`; });
