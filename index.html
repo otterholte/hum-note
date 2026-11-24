@@ -250,7 +250,7 @@ button.q,label.q{background:transparent;border-color:transparent}button.q:hover,
     <div class="meter" id="meter" hidden><i id="lvl"></i></div>
     <details class="tOpts"><summary>Tuner settings</summary><div class="tunerOpts">
       <div class="seg" id="segRef"><button type="button" data-v="a440">A4 = 440 Hz</button><button type="button" data-v="me">Tune to me</button></div>
-      <div class="tSet"><span>Tolerance</span><div class="seg" id="segTol"><button type="button" data-v="5">±5</button><button type="button" data-v="10">±10</button><button type="button" data-v="15">±15</button><button type="button" data-v="20">±20</button></div></div>
+      <div class="tSet"><span>Tolerance</span><div class="seg" id="segTol"><button type="button" data-v="10">±10</button><button type="button" data-v="15">±15</button><button type="button" data-v="20">±20</button><button type="button" data-v="25">±25</button></div></div>
       <div class="tSet"><span>Smoothing</span><div class="seg" id="segSmooth"><button type="button" data-v="low">Low</button><button type="button" data-v="med">Medium</button><button type="button" data-v="high">High</button><button type="button" data-v="voice">Voice</button></div></div>
       <div class="tSet"><span>Pitch detector</span><div class="seg" id="segDet"><button type="button" data-v="ai">AI (SwiftF0)</button><button type="button" data-v="classic">Classic</button></div><span class="status" id="tDetS"></span></div>
       <div class="tSet"><span>Pitch trace</span><div class="seg" id="segTrace"><button type="button" data-v="off">Off</button><button type="button" data-v="on">On</button></div></div>
@@ -365,7 +365,7 @@ button.q,label.q{background:transparent;border-color:transparent}button.q:hover,
 // Melody transcription core: pitch tracking -> tuning -> key -> HMM note decoding
 const Hum = (() => {
   // note-decision settings (found by tuning on sung + hummed recordings with known notes); tools can override them
-  const HP = Object.assign({sigma: 0.33, kappa: 2, TN: 6, TS: 6, gapF: 6, gapDip: 4, dip: 5, nvTh: 6, nvDip: 0, tailS: 0.16, tailDB: 3, veto: 2.5, minF: 0.08, shortF: 0.2, glideSlope: 0.035, glideStab: 0.45, scoopS: 0.15, scoopST: 2, scoopR: 1.5, foldL: 0.2, foldSet: 0.06, nbFlat: 0.7}, (typeof globalThis!=='undefined'&&globalThis.HUM_P)||{});
+  const HP = Object.assign({sigma: 0.33, kappa: 2, TN: 6, TS: 6, gapF: 6, gapDip: 4, dip: 5, nvTh: 6, nvDip: 0, tailS: 0.16, stdyL: 0.25, wsL: 0.16, tailDB: 3, veto: 2.5, minF: 0.08, shortF: 0.2, glideSlope: 0.035, glideStab: 0.45, scoopS: 0.15, scoopST: 2, scoopR: 1.5, foldL: 0.2, foldSet: 0.06, nbFlat: 0.7}, (typeof globalThis!=='undefined'&&globalThis.HUM_P)||{});
   const NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
   const FLATS = ['C','D♭','D','E♭','E','F','G♭','G','A♭','A','B♭','B'];
   const KMAJ = [6.35,2.23,3.48,2.33,4.38,4.09,2.52,5.19,2.39,3.66,2.29,2.88];
@@ -662,7 +662,14 @@ const Hum = (() => {
       // a) re-centre, judging each note against how sharp/flat the singer was on the notes around it
       const tOf=o=>(o.a+o.b)/2*F.dt;
       // short pieces have no real resting point yet: use their overall centre
-      list.forEach(o=>{ o.bs=o.b-o.a<4?o.pitch:(o.b-o.a)*F.dt>=0.25?base(o):center(o); });
+      // a short note that starts off-pitch (a scoop or a wrong start, fixed straight away) is heard where the
+      // voice holds steadiest, usually its middle, not the average with the wrong start
+      const steadiest=o=>{ const v=[]; for(let i=o.a;i<o.b;i++) if(voiced[i]) v.push(rr(i,o)); if(v.length<6) return center(o);
+        const w=Math.max(3,Math.round(v.length*0.4)); let best=null;
+        for(let k=1;k+w<v.length;k++){ const s2=v.slice(k,k+w), r=Math.max(...s2)-Math.min(...s2); if(!best||r<=best.r+0.05) best={r,m:median(s2),k}; }
+        if(!best||best.r>=0.5||w<5) return center(o);
+        const head=median(v.slice(0,Math.max(2,best.k))); return Math.abs(head-best.m)>=0.9?best.m:center(o); };
+      list.forEach(o=>{ o.bs=o.b-o.a<4?o.pitch:(o.b-o.a)*F.dt>=HP.stdyL?base(o):steadiest(o); });
       list.forEach(o=>{ if(o.b-o.a<4) return; const nb=[];
         list.forEach(j=>{ if(j===o||j.b-j.a<4||Math.abs(tOf(j)-tOf(o))>1.5) return; const fr=j.bs-Math.round(j.bs); if(Math.abs(fr)<0.35) nb.push([fr,j.b-j.a]); });
         let off=0; if(nb.length>=2){ nb.sort((x,y)=>x[0]-y[0]); const W=nb.reduce((a,x)=>a+x[1],0); let acc=0; for(const [fr,w] of nb){ acc+=w; if(acc>=W/2){ off=fr; break; } } }
@@ -773,6 +780,23 @@ const Hum = (() => {
           const mv=median(Array.from({length:found.b-found.a},(_,j)=>rr(found.a+j,p))); if(Math.abs(mv-q.pitch)<0.85) continue; // resting just under the next note = scooping into it
           p.b=found.a; out2.push({...p,a:found.a,b:found.b,pitch:pick(mv),cut:0,orn:1}); q.a=found.b; }
         fin=out2; }
+      // k) a wrong start fixed straight away: a quick note (0.16 s or less) a semitone off, flowing with no new
+      //    syllable into the note the voice then settles on, after a jump of 2+ semitones — it is one note, the second
+      { const out2=[]; for(let k=0;k<fin.length;k++){ const o=fin[k], p=out2[out2.length-1], pp=out2[out2.length-2], nx=fin[k+1];
+          if(p&&!o.cut&&!o.orn&&Math.abs(o.pitch-p.pitch)===1&&o.a-p.b<=3&&(p.b-p.a)*F.dt<=HP.wsL&&(o.b-p.a)*F.dt<=0.4&&(!pp||p.a-pp.b>3||Math.abs(p.pitch-pp.pitch)>=2)&&!(nx&&nx.pitch===p.pitch&&nx.a-o.b<=3)){
+            let gv=true; for(let i=p.b;i<o.a;i++) if(!voiced[i]) gv=false;
+            if(gv){ p.b=o.b; p.pitch=o.pitch; p.orn=0; continue; } }
+          out2.push(o); } fin=out2; }
+      // j) a blip: a split second (under ~0.15 s) a fifth or more away from the notes on both sides, which are
+      //    about the same pitch, with the voice going straight back. Nobody sings that; it is a tracking glitch.
+      { const out2=[]; for(let k=0;k<fin.length;k++){ const o=fin[k], p=out2[out2.length-1], q=fin[k+1];
+          const at=x=>{ let c=0; for(let i=x.a;i<x.b;i++) if(voiced[i]&&Math.abs(rr(i,x)-x.pitch)<1.5) c++; return c*F.dt; };
+          if(p&&q&&(o.b-o.a)*F.dt<=0.3&&at(o)<=0.16&&(o.a-p.b)*F.dt<=0.12&&(q.a-o.b)*F.dt<=0.12&&Math.abs(p.pitch-q.pitch)<=2){
+            const dp=o.pitch-p.pitch, dq=o.pitch-q.pitch;
+            if(Math.abs(dp)>=7&&Math.abs(dq)>=7&&Math.sign(dp)===Math.sign(dq)){
+              let gv=true; for(let i=p.b;i<q.a;i++) if(!voiced[i]) gv=false; if(p.pitch===q.pitch&&!q.cut&&gv){ p.b=q.b; k++; } else { const mid=Math.round((o.a+o.b)/2); p.b=mid; q.a=mid; }
+              continue; } }
+          out2.push(o); } fin=out2; }
       return fin;
     }
   }
@@ -971,8 +995,8 @@ if(typeof module!=='undefined') module.exports=Hum;
 <script>
 {
 const $=id=>document.getElementById(id);
-const st={F:null,buf:null,res:null,notes:[],detected:null,edited:false,key:1,stick:10,tr:0,snd:'piano',hear:'both',ref:'a440',demo:true,pos:0,loop:null,sel:-1,tempo:null,div:2,qs:60,vib:'keep',vibSens:0.7,ts:4,drift:'on',tol:10,smooth:'voice',trace:'off',det:'ai',ver:0,scoreClean:false,scoreChords:false,scoreOct:0};
-try{ const s=JSON.parse(localStorage.getItem('hum2midi')||'{}'); if(!localStorage.getItem('hum2midi_v5')){ delete s.smooth; localStorage.setItem('hum2midi_v5','1'); } ['key','stick','snd','hear','ref','div','qs','vib','vibSens','ts','tol','smooth','trace','drift','det'].forEach(k=>{ if(s[k]!=null) st[k]=s[k]; }); }catch(e){}
+const st={F:null,buf:null,res:null,notes:[],detected:null,edited:false,key:1,stick:10,tr:0,snd:'piano',hear:'both',ref:'a440',demo:true,pos:0,loop:null,sel:-1,tempo:null,div:2,qs:60,vib:'keep',vibSens:0.7,ts:4,drift:'on',tol:20,smooth:'voice',trace:'off',det:'ai',ver:0,scoreClean:false,scoreChords:false,scoreOct:0};
+try{ const s=JSON.parse(localStorage.getItem('hum2midi')||'{}'); if(!localStorage.getItem('hum2midi_v5')){ delete s.smooth; localStorage.setItem('hum2midi_v5','1'); } if(!localStorage.getItem('hum2midi_v6')){ delete s.tol; localStorage.setItem('hum2midi_v6','1'); } ['key','stick','snd','hear','ref','div','qs','vib','vibSens','ts','tol','smooth','trace','drift','det'].forEach(k=>{ if(s[k]!=null) st[k]=s[k]; }); }catch(e){}
 const saveSet=()=>{ try{ localStorage.setItem('hum2midi',JSON.stringify({key:st.key,stick:st.stick,snd:st.snd,hear:st.hear,ref:st.ref,div:st.div,qs:st.qs,vib:st.vib,vibSens:st.vibSens,ts:st.ts,drift:st.drift,tol:st.tol,smooth:st.smooth,trace:st.trace,det:st.det})); }catch(e){} };
 const toast=t=>{ const el=$('toast'); el.textContent=t; el.classList.add('show'); clearTimeout(toast.h); toast.h=setTimeout(()=>el.classList.remove('show'),3200); };
 let AC=null; const ac=()=>{ if(!AC) AC=new (window.AudioContext||window.webkitAudioContext)(); if(AC.state==='suspended') AC.resume(); return AC; };
@@ -1821,7 +1845,7 @@ function tunerLoop(){ if(!rec) return; const r=rec, now=performance.now(), dt=Ma
       if(now-(r.tTxt||0)>300){ r.tTxt=now; const cr=Math.round(r.cz); $('tCents').textContent=(cr>0?'+':cr<0?'−':'')+Math.abs(cr)+'¢'; $('tHz').textContent=(440*2**((r.me-69)/12)).toFixed(1)+' Hz'; }
       // label with a little patience, so it doesn't flicker
       // green within the tolerance, yellow up to twice it, red past that — with a 3¢ margin so it doesn't flip back and forth on a border
-      const a=Math.abs(r.cz), wasOk=r.zone==='ok', wasFar=/far/.test(r.zone||''), T=st.tol, mg=Math.max(1.5,T*0.2), okLim=wasOk?T+mg:T-mg, farLim=wasFar?2*T-mg:2*T+mg;
+      const a=Math.abs(r.cz), wasOk=r.zone==='ok', wasFar=/far/.test(r.zone||''), T=st.tol, mg=Math.max(1.5,T*0.2), okLim=wasOk?T+mg:T-mg, farLim=wasFar?Math.min(45,2*T)-mg:Math.min(45,2*T)+mg;
       const zone=a<=okLim?'ok':a<=farLim?(r.cz>0?'near+':'near-'):(r.cz>0?'far+':'far-');
       if(zone!==r.zone){ if(!r.zc||r.zc.v!==zone) r.zc={v:zone,since:now}; else if(now-r.zc.since>tsm().pat||r.zone==null){ r.zone=zone; r.zc=null;
         tu.classList.remove('ok','near','far'); tu.classList.add(zone.replace(/[+-]/,''));
@@ -2028,7 +2052,7 @@ function wuTick(r,m,steady,now,dt){ const S=WU.S; if(!S) return; const el=(now-W
     if(WU.ref!=null&&Math.abs(r.me-WU.ref)>0.8){ WU.samp=[]; WU.hold=0; WU.ref=null; }
     if(WU.ref==null) WU.ref=r.me;
     const mid=WU.res.mid, okDir=WU.id==='low'?(!mid||r.me<mid.m-1.5):(WU.id==='high'||WU.id==='up')?(!mid||r.me>mid.m+1.5):true;
-    const inTune=(WU.id!=='mid'&&WU.id!=='up')||Math.abs(c)<=25;
+    const inTune=(WU.id!=='mid'&&WU.id!=='up')||Math.abs(c)<=st.tol;
     if(!okDir) $('wuHint').textContent=WU.id==='low'?'Go a bit lower than your first note':'Go a bit higher than your first note';
     else if(!inTune) $('wuHint').textContent=c>0?'A little sharp: come down until the tuner turns green':'A little flat: come up until the tuner turns green';
     else { $('wuHint').textContent='Good, keep holding'; good=true; } }
