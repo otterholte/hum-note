@@ -635,7 +635,7 @@ const Hum = (() => {
         pieces.push({...o,a:cur,b:o.b,cut:0}); pieces.forEach(x=>out.push(x));
       }
       // d) a short fall-off (or flick) that ends a phrase belongs to the held note before it
-      const fin=[];
+      let fin=[];
       for(let k=0;k<out.length;k++){ const o=out[k], p=fin[fin.length-1], nx=out[k+1];
         const ends=!nx||nx.a-o.b>3||nx.cut;
         if(ends&&p&&!o.cut&&!o.orn&&o.a-p.b<=3&&(o.b-o.a)*F.dt<0.2&&(p.b-p.a)*F.dt>=0.3&&Math.abs(o.pitch-p.pitch)<=3){
@@ -643,6 +643,43 @@ const Hum = (() => {
           let steady=0; for(let i=o.a;i<o.b;i++) if(voiced[i]&&F.stable[i]>=1&&Math.abs(rr(i,o)-o.pitch)<0.35) steady++;
           if(gapVoiced&&steady*F.dt<0.1){ p.b=o.b; continue; } }
         fin.push(o); }
+      // e) a turn inside one note: the voice settles on its pitch, then dips (or rises) 1.4+ semitones to a
+      //    low (or high) point it actually reaches, then moves on — that low point is a quick note of its own
+      { const out2=[]; const W=Math.round(0.06/F.dt);
+        fin.forEach(o=>{ if((o.b-o.a)*F.dt<0.22||o.orn){ out2.push(o); return; }
+          const vi=[]; for(let i=o.a;i<o.b;i++) if(voiced[i]) vi.push([i,rr(i,o)]); if(vi.length<10){ out2.push(o); return; }
+          const P0=median(vi.slice(0,Math.min(8,vi.length)).map(v=>v[1]));
+          // the most extreme point after the start, held within half a semitone for ~0.05 s
+          let best=null; for(let k=4;k<vi.length-1;k++){ const d=vi[k][1]-P0; if(Math.abs(d)<1.4) continue; let n2=0; for(let j=Math.max(0,k-3);j<=Math.min(vi.length-1,k+3);j++) if(Math.abs(vi[j][1]-vi[k][1])<0.5) n2++; if(n2<4) continue; if(!best||Math.abs(d)>Math.abs(best.d)) best={k,d}; }
+          if(!best){ out2.push(o); return; }
+          const sg=Math.sign(best.d); let s0=best.k; while(s0>0&&(vi[s0-1][1]-P0)*sg>=Math.abs(best.d)/2) s0--;
+          const cut=vi[s0][0]; if((cut-o.a)*F.dt<0.06){ out2.push(o); return; }
+          const tail=vi.filter(v=>v[0]>=cut&&(v[1]-P0)*sg>=Math.abs(best.d)*0.85).map(v=>v[1]); const q=pick(median(tail));
+          if(q===o.pitch){ out2.push(o); return; }
+          out2.push({...o,b:cut,pitch:pick(P0)}); out2.push({...o,a:cut,cut:0,pitch:q,orn:1}); });
+        fin=out2; }
+      // f) a scoop that comes to rest just under (or over) the next note — within ~¾ of a semitone, still moving
+      //    toward it — is the start of that note, not a note of its own
+      { const out2=[]; for(let k=0;k<fin.length;k++){ const o=fin[k], nx=fin[k+1], pv=out2[out2.length-1];
+          if(nx&&!nx.cut&&(o.b-o.a)*F.dt<0.26&&nx.a-o.b<=3&&o.pitch!==nx.pitch&&pv&&Math.sign(o.pitch-pv.pitch)===Math.sign(nx.pitch-o.pitch)){
+            const c=center(o); if(Math.abs(nx.pitch-c)<0.85){ nx.a=o.a; nx.cut=o.cut; continue; } }
+          out2.push(o); } fin=out2; }
+      // g) the tail of a phrase: short wobbles (under 0.3 s, within 2 semitones) after the last held note fold into it
+      { for(let k=fin.length-1;k>0;k--){ const nx=fin[k+1]; if(nx&&nx.a-fin[k].b<=Math.round(0.3/F.dt)) continue;
+          let h=k; while(h>0&&(fin[h].b-fin[h].a)*F.dt<0.3&&fin[h].a-fin[h-1].b<=3&&!fin[h].cut) h--;
+          if(h<k&&(fin[h].b-fin[h].a)*F.dt>=0.35&&fin.slice(h+1,k+1).every(t=>Math.abs(t.pitch-fin[h].pitch)<=2)){ fin[h].b=fin[k].b; fin.splice(h+1,k-h); }
+          k=h; } }
+      // h) a passing note: between two notes a step or more apart, the voice briefly rests (0.07 s+) on a note in
+      //    between — that is a note too (a fast slide straight through doesn't rest anywhere, so it isn't)
+      { const RUN=Math.round(0.07/F.dt), out2=[];
+        for(let k=0;k<fin.length;k++){ const p=fin[k], q=fin[k+1]; out2.push(p); if(!q||q.a-p.b>3||Math.abs(q.pitch-p.pitch)<2) continue;
+          const lo=Math.min(p.pitch,q.pitch), hi=Math.max(p.pitch,q.pitch); let found=null;
+          for(let i=Math.max(p.a+3,p.b-25);i<Math.min(q.b-3,q.a+25);i++){ if(!voiced[i]) continue; const r=Math.round(rr(i,p)); if(r<=lo||r>=hi) continue; let e=i; while(e<q.b&&voiced[e]&&Math.abs(rr(e,p)-r)<0.35) e++;
+            if(e-i>=RUN){ found={a:i,b:e,r}; break; } i=e; }
+          if(!found||found.a-p.a<4||q.b-found.b<4) continue;
+          const mv=median(Array.from({length:found.b-found.a},(_,j)=>rr(found.a+j,p))); if(Math.abs(mv-q.pitch)<0.85) continue; // resting just under the next note = scooping into it
+          p.b=found.a; out2.push({...p,a:found.a,b:found.b,pitch:pick(mv),cut:0,orn:1}); q.a=found.b; }
+        fin=out2; }
       return fin;
     }
   }
@@ -699,6 +736,9 @@ const Hum = (() => {
     return notes.map((n,i)=>{ const o=O[path[i]], p=emit(i,o)[1]; return {...n,pitch:p,rel:Math.round(100*(x[i]-o-p)),drift:Math.round(100*o)}; });
   }
 
+  // fold the drift Viterbi found (per note) into the tuning curve itself
+  function applyDrift(F,tune,dnotes){ const pts=dnotes.filter(n=>n.drift!=null).map(n=>[((n.start+n.end)/2-F.t0)/F.dt,n.drift/100]); if(!pts.length) return;
+    for(let i=0;i<F.n;i++){ let o; if(i<=pts[0][0]) o=pts[0][1]; else if(i>=pts[pts.length-1][0]) o=pts[pts.length-1][1]; else { let k=0; while(pts[k+1][0]<i) k++; const [a,x]=pts[k],[b,y]=pts[k+1]; o=x+(y-x)*(i-a)/(b-a); } tune.curve[i]+=o; } }
   // the key that makes the most musical sense once drift is allowed for (every key is tried)
   function driftKey(notes){ if(notes.length<4) return null; let best=null;
     for(let t=0;t<12;t++) for(const mode of ['major','minor']){ const sc=(mode==='major'?SC_MAJ:[0,2,3,5,7,8,10]).map(i=>(i+t)%12), k={tonic:t,mode,scale:sc,conf:1};
@@ -790,7 +830,7 @@ const Hum = (() => {
     return new Uint8Array([0x4D,0x54,0x68,0x64,0,0,0,6,0,0,0,1,(PPQ>>8),PPQ&255, 0x4D,0x54,0x72,0x6B,(L>>>24)&255,(L>>16)&255,(L>>8)&255,L&255,...tr]);
   }
 
-  return {track,frames,tuningCurve,detectKey,decode,refine,transcribe,name,flatName,toMidi,tempo,quantize,vibrato,followDrift,driftKey,NAMES,FLATS};
+  return {track,frames,tuningCurve,detectKey,decode,refine,transcribe,name,flatName,toMidi,tempo,quantize,vibrato,followDrift,driftKey,applyDrift,NAMES,FLATS};
 })();
 if(typeof module!=='undefined') module.exports=Hum;
 
@@ -833,7 +873,7 @@ function redecode(fresh){
   if(notes.length>=3){ key=Hum.detectKey(notes); if(st.key>0) notes=Hum.decode(F,tune,key,opt); key=Hum.detectKey(notes); }
   if(notes.length>=4) Hum.refine(F,tune,notes);
   notes=Hum.decode(F,tune,st.key>0?key:null,{...opt,shape:1});
-  if(st.drift!=='off'&&st.key>0&&notes.length>=4){ const k2=Hum.driftKey(notes)||key; notes=Hum.followDrift(Hum.decode(F,tune,k2,{...opt,shape:1}),k2); key=k2; }
+  if(st.drift!=='off'&&st.key>0&&notes.length>=4){ const k2=Hum.driftKey(notes)||key; Hum.applyDrift(F,tune,Hum.followDrift(Hum.decode(F,tune,k2,{...opt,shape:1}),k2)); key=k2; notes=Hum.decode(F,tune,key,{...opt,shape:1}); }
   addVib(notes); st.chordOver={}; st.res={tune,key}; st.notes=notes; st.detected=notes.map(n=>({...n})); st.edited=false; st.sel=-1; st.tempo=Hum.tempo(notes); qSess=null; render();
 }
 
@@ -1218,9 +1258,11 @@ function cleanupScore(N,barLen){ const sc=scoreScale(), inKey=p=>!sc||sc.pcs.inc
   const out=[];
   voicesOf(N).forEach(V=>{ let M=V.map(o=>({...o}));
     // 1) blips: a 16th-note hit that leaves and comes straight back (or just stops) is a slip, not a note
-    M=M.filter((o,k)=>{ if(o.u1-o.u0>1) return true; const p=M[k-1], q=M[k+1], pa=p&&o.u0-p.u1<=2, qa=q&&q.u0-o.u1<=2; return !(pa&&qa&&p.p===q.p&&o.p!==p.p); });
+    M=M.filter((o,k)=>{ if(o.u1-o.u0>1||(o.n&&o.n.end-o.n.start>=0.08)) return true; const p=M[k-1], q=M[k+1], pa=p&&o.u0-p.u1<=2, qa=q&&q.u0-o.u1<=2; return !(pa&&qa&&p.p===q.p&&o.p!==p.p); });
     // 2) onsets: a note a 16th off the 8th-note grid moves onto it (toward where there's room)
     M.forEach((o,k)=>{ if(o.u0%2===0) return; const p=M[k-1]; o.u0=(p&&p.u1>o.u0-1)?o.u0+1:o.u0-1; if(o.u1<=o.u0) o.u1=o.u0+1; });
+    // never two notes of one line at the same moment: keep starts in order and ends before the next start
+    for(let k=1;k<M.length;k++){ if(M[k].u0<=M[k-1].u0) M[k].u0=M[k-1].u0+1; if(M[k].u1<=M[k].u0) M[k].u1=M[k].u0+1; if(M[k-1].u1>M[k].u0) M[k-1].u1=M[k].u0; }
     // 3) out-of-key notes that are short go to the nearest note in the key (toward where the tune goes next)
     M.forEach((o,k)=>{ if(inKey(o.p)||o.u1-o.u0>=8) return; const q=M[k+1], dir=q?Math.sign(q.p-o.p)||1:-1; o.p=inKey(o.p+dir)?o.p+dir:inKey(o.p-dir)?o.p-dir:o.p; });
     // 4) the same note repeated with no gap, the second only a 16th long, is one note
@@ -1228,6 +1270,27 @@ function cleanupScore(N,barLen){ const sc=scoreScale(), inKey=p=>!sc||sc.pcs.inc
     // 5) legato and tidy lengths: fill tiny gaps, then round lengths to plain values that fit before the next note
     M.forEach((o,k)=>{ const q=M[k+1], room=q?q.u0-o.u0:1e9; let d=o.u1-o.u0; if(q&&q.u0-o.u1<=2&&q.u0-o.u1>0) d=room;
       const vals=[1,2,3,4,6,8,12,16].filter(v=>v<=room); d=vals.reduce((b,v)=>Math.abs(v-d)<Math.abs(b-d)?v:b,vals[0]||1); o.u1=o.u0+d; });
+    // 5a) the melody's own scale: the notes it really uses (often a 5-note pentatonic or a 6-7 note major/minor set).
+    //     A short note whose pitch class shows up only once in the whole tune, a step from one the tune uses all the
+    //     time, is a slip toward that note (taking the neighbour the voice was moving toward)
+    { const cnt=new Array(12).fill(0), dur=new Array(12).fill(0); let tot=0; M.forEach(o=>{ const pc=((o.p%12)+12)%12; cnt[pc]++; dur[pc]+=o.u1-o.u0; tot+=o.u1-o.u0; });
+      const common=pc=>cnt[pc]>=3||dur[pc]>=0.1*tot;
+      // only unstable notes qualify (never the key's home chord: 1, 3, 5), and only when they don't go where they lean:
+      // the 7th (leading tone) leans up to the home note, the 4th leans down to the 3rd, others lean to a step neighbour
+      const deg=p=>sc?((((p%12)+12)%12)-sc.tonic+12)%12:-1, stable=p=>sc&&[0,sc.minor?3:4,7].includes(deg(p));
+      const resolves=(o,nx)=>{ if(!nx) return false; const d=deg(o.p), st2=nx.p-o.p; if(d===11) return st2===1; if(d===5&&!sc.minor) return st2===-1||st2===-2; return Math.abs(st2)<=2; };
+      if(M.length>=8&&sc) M.forEach((o,k)=>{ const pc=((o.p%12)+12)%12; if(cnt[pc]>1||o.u1-o.u0>4||stable(o.p)||resolves(o,M[k+1])) return;
+        const nb=[-2,-1,1,2].map(d=>o.p+d).filter(q=>common(((q%12)+12)%12)&&(inKey(q)||!sc)); if(!nb.length) return;
+        const nx=M[k+1], pv=M[k-1], dir=nx&&pv?Math.sign(nx.p-pv.p):0;
+        nb.sort((a,b)=>Math.abs(a-o.p)-Math.abs(b-o.p)||(dir?(Math.sign(b-o.p)===-dir)-(Math.sign(a-o.p)===-dir):0)); o.p=nb[0]; }); }
+    // 5b) repeated figures: the same 3- or 4-note figure (same first and last note) that comes back with one middle note
+    //     a step different is the same figure sung a little off — match it to the version sung more often
+    const inPhrase=w=>w.every((o,t)=>!t||o.u0-w[t-1].u1<=2);
+    for(const L of [3,4]){ for(let i=0;i+L<=M.length;i++){ const win=M.slice(i,i+L); if(!inPhrase(win)) continue;
+        for(let mid=1;mid<L-1;mid++){ const alts={}; let mine=0;
+          for(let j=0;j+L<=M.length;j++){ if(j===i) continue; const w=M.slice(j,j+L); if(!inPhrase(w)||w[0].p!==win[0].p||w[L-1].p!==win[L-1].p) continue;
+            if(w.every((o,t)=>t===mid||o.p===win[t].p)){ if(w[mid].p===win[mid].p) mine++; else if(Math.abs(w[mid].p-win[mid].p)<=2&&inKey(w[mid].p)) alts[w[mid].p]=(alts[w[mid].p]||0)+1; } }
+          const best=Object.entries(alts).sort((a,b)=>b[1]-a[1])[0]; if(best&&best[1]>=2&&best[1]>mine+1) win[mid].p=+best[0]; } } }
     // 6) the last note of a phrase (a rest of a beat or more follows) rings to the next beat
     M.forEach((o,k)=>{ const q=M[k+1]; if(q&&q.u0-o.u1<4) return; const nb=Math.ceil(o.u1/4)*4; if(!q||q.u0>=nb) o.u1=Math.max(o.u1,nb); });
     out.push(...M); });
