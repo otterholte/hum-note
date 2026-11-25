@@ -997,7 +997,7 @@ if(typeof module!=='undefined') module.exports=Hum;
 {
 const $=id=>document.getElementById(id);
 const st={F:null,buf:null,res:null,notes:[],detected:null,edited:false,key:1,stick:10,tr:0,snd:'piano',hear:'both',ref:'a440',demo:true,pos:0,loop:null,sel:-1,tempo:null,div:2,qs:60,vib:'keep',vibSens:0.7,ts:4,drift:'on',tol:20,smooth:'voice',trace:'off',det:'ai',ver:0,scoreClean:false,scoreChords:false,scoreOct:0};
-try{ const s=JSON.parse(localStorage.getItem('hum2midi')||'{}'); if(!localStorage.getItem('hum2midi_v5')){ delete s.smooth; localStorage.setItem('hum2midi_v5','1'); } if(!localStorage.getItem('hum2midi_v6')){ delete s.tol; localStorage.setItem('hum2midi_v6','1'); } ['key','stick','snd','hear','ref','div','qs','vib','vibSens','ts','tol','smooth','trace','drift','det'].forEach(k=>{ if(s[k]!=null) st[k]=s[k]; }); }catch(e){}
+try{ const s=JSON.parse(localStorage.getItem('hum2midi')||'{}'); if(!localStorage.getItem('hum2midi_v5')){ delete s.smooth; localStorage.setItem('hum2midi_v5','1'); } if(!localStorage.getItem('hum2midi_v7')){ delete s.tol; localStorage.setItem('hum2midi_v6','1'); localStorage.setItem('hum2midi_v7','1'); } ['key','stick','snd','hear','ref','div','qs','vib','vibSens','ts','tol','smooth','trace','drift','det'].forEach(k=>{ if(s[k]!=null) st[k]=s[k]; }); }catch(e){}
 const saveSet=()=>{ try{ localStorage.setItem('hum2midi',JSON.stringify({key:st.key,stick:st.stick,snd:st.snd,hear:st.hear,ref:st.ref,div:st.div,qs:st.qs,vib:st.vib,vibSens:st.vibSens,ts:st.ts,drift:st.drift,tol:st.tol,smooth:st.smooth,trace:st.trace,det:st.det})); }catch(e){} };
 const toast=t=>{ const el=$('toast'); el.textContent=t; el.classList.add('show'); clearTimeout(toast.h); toast.h=setTimeout(()=>el.classList.remove('show'),3200); };
 let AC=null; const ac=()=>{ if(!AC) AC=new (window.AudioContext||window.webkitAudioContext)(); if(AC.state==='suspended') AC.resume(); return AC; };
@@ -1765,7 +1765,7 @@ async function whole(x){ const H=256, n=Math.max(1,Math.floor(x.length/H)), f0=n
   for(let i=0;i<n;i++){ let pk=0; for(let j=i*H;j<Math.min(x.length,(i+1)*H);j++){ const a=Math.abs(x[j]); if(a>pk) pk=a; } if(pk<1e-3) conf[i]=0; }
   const t=new Float32Array(n); for(let i=0;i<n;i++) t[i]=i*H/16000; return {t,f0,conf}; }
 onmessage=async e=>{ if(!sess) return; if(e.data.whole){ try{ const r=await whole(e.data.whole); postMessage({whole:r}); }catch(err){ postMessage({whole:null}); } return; } try{ const x=e.data.x; const r=await sess.run({audio:new ort.Tensor('float32',x,[1,x.length]),fmin:new ort.Tensor('float32',[46.875],[]),fmax:new ort.Tensor('float32',[2093.75],[])});
-  const P=r.pitch.data, C=r.confidence.data, k=Math.max(0,C.length-3); postMessage({f:P[k],c:C[k]}); }catch(err){ postMessage({f:0,c:0}); } };`;
+  const P=r.pitch.data, C=r.confidence.data, k=Math.max(0,C.length-2); postMessage({f:P[k],c:C[k]}); }catch(err){ postMessage({f:0,c:0}); } };`;
 function swiftStart(){ if(SW.w||SW.fail||st.det==='classic'||!/^https?:$/.test(location.protocol)) return;
   try{ const base=location.href.replace(/[?#].*$/,'').replace(/[^/]*$/,''); SW.w=new Worker(URL.createObjectURL(new Blob([`const BASE=${JSON.stringify(base)};`+SW_WORKER],{type:'text/javascript'})));
     SW.w.onmessage=e=>{ const d=e.data; if('whole' in d){ SW.busy=false; const cb=SW.wcb; SW.wcb=null; if(cb) cb(d.whole); return; } if(d.ready){ SW.ready=true; tDet(); } else if(d.error){ SW.fail=true; tDet(); } else { SW.busy=false; SW.f=d.f; SW.c=d.c; SW.t=performance.now(); } };
@@ -1773,7 +1773,7 @@ function swiftStart(){ if(SW.w||SW.fail||st.det==='classic'||!/^https?:$/.test(l
 function swiftWhole(x){ return new Promise(res=>{ if(!SW.ready||SW.fail){ res(null); return; } let pk=0; for(let i=0;i<x.length;i++){ const a=Math.abs(x[i]); if(a>pk) pk=a; }
   const y=new Float32Array(x.length), g=pk>0?0.9/pk:1; for(let i=0;i<x.length;i++) y[i]=x[i]*g;
   const to=setTimeout(()=>{ if(SW.wcb){ SW.wcb=null; res(null); } },60000); SW.wcb=r=>{ clearTimeout(to); res(r&&r.t.length?r:null); }; SW.busy=true; SW.w.postMessage({whole:y},[y.buffer]); }); }
-function swiftAsk(r){ if(!SW.ready||SW.busy) return; const now=performance.now(); if(now-SW.asked<28) return; SW.asked=now;
+function swiftAsk(r){ if(!SW.ready||SW.busy) return; const now=performance.now(); if(now-SW.asked<16) return; SW.asked=now;
   const n=14*256, q=r.sr/16000, L=r.ring.length, x=new Float32Array(n), wq=Math.max(1,Math.round(q)); let pk=0;
   for(let i=0;i<n;i++){ const pos=r.w-(n-i)*q; let s2=0; for(let k=0;k<wq;k++) s2+=r.ring[((Math.floor(pos)+k)%L+L)%L]; x[i]=s2/wq; const a=Math.abs(x[i]); if(a>pk) pk=a; }
   if(pk<0.002){ SW.f=0; SW.c=0; SW.t=now; return; } const g=Math.min(40,0.5/pk); for(let i=0;i<n;i++) x[i]*=g;
@@ -1784,7 +1784,7 @@ function tDet(){ const el=$('tDetS'); if(el&&SW) el.textContent=st.det==='classi
 // the in tune / sharp / flat label changes only after it has been true for ~0.3 s.
 const T_DEG=1.2, T_CX=300, T_CY=300, T_R=250;
 // Smoothing: how fast the reading follows you (glide/needle time constants, label patience, steady window)
-const TSM={low:{glide:0.06,cz:0.12,pat:200,win:70,nm:50},med:{glide:0.12,cz:0.3,pat:350,win:80,nm:60},high:{glide:0.2,cz:0.5,pat:500,win:90,nm:70},voice:{glide:0.25,cz:0.6,pat:550,win:90,nm:70}};
+const TSM={low:{glide:0.06,cz:0.12,pat:200,win:70,nm:50},med:{glide:0.12,cz:0.3,pat:350,win:80,nm:60},high:{glide:0.2,cz:0.5,pat:500,win:90,nm:70},voice:{glide:0.18,cz:0.5,pat:450,win:80,nm:40}};
 const tsm=()=>TSM[st.smooth]||TSM.voice; // 1.2° per cent: -50..+50 cents spans ±60°
 function buildArc(force){ const svg=$('tArc'); if(svg.childElementCount&&!force) return; const T=st.tol, T2=Math.min(45,2*T); const pt=(c,r)=>{ const a=c*T_DEG*Math.PI/180; return [T_CX+r*Math.sin(a),T_CY-r*Math.cos(a)]; };
   const arc=(c0,c1,r)=>{ const [x0,y0]=pt(c0,r),[x1,y1]=pt(c1,r); return `M${x0.toFixed(1)} ${y0.toFixed(1)}A${r} ${r} 0 0 1 ${x1.toFixed(1)} ${y1.toFixed(1)}`; };
@@ -1827,11 +1827,12 @@ function lvOn(p){ const ctx=ac(); if(!['keys','flute'].includes(st.snd)){ pianoO
 function lvOff(){ const N=LV.node; LV.node=null; LV.p=null; if(!N) return; if(N.piano!=null){ pianoOff(N.piano,true); return; }
   const t=ac().currentTime; N.g.gain.cancelScheduledValues(t); N.g.gain.setTargetAtTime(0,t,0.04); N.os.forEach(o=>{ try{ o.stop(t+0.3); }catch(e){} }); }
 function lvTick(r,m,now,dt){ if(!(r.recording&&!r.paused&&$('liveN').checked)){ if(LV.node) lvOff(); LV.cand=null; return; }
-  if(isNaN(m)||r.mf==null){ LV.quiet+=dt; LV.cand=null; if(LV.quiet>0.12&&LV.node) lvOff(); return; }
-  LV.quiet=0; const p=Math.round(r.mf);
-  if(LV.p!=null&&(p===LV.p||Math.abs(r.mf-LV.p)<0.6)){ LV.cand=null; return; }
-  if(!LV.cand||LV.cand.p!==p){ LV.cand={p,since:now}; return; }
-  if(now-LV.cand.since>=(LV.p==null?60:70)){ if(LV.node) lvOff(); lvOn(p); LV.p=p; LV.cand=null; } }
+  const x=r.mRaw; if(x==null||isNaN(x)){ LV.quiet+=dt; LV.cand=null; if(LV.quiet>0.08&&LV.node) lvOff(); return; }
+  if(x===LV.lastX) return; LV.lastX=x; // only count new readings
+  LV.quiet=0; const p=Math.round(x);
+  if(LV.p!=null&&(p===LV.p||Math.abs(x-LV.p)<0.6)){ LV.cand=null; return; }
+  if(!LV.cand||LV.cand.p!==p){ LV.cand={p,n:1}; return; }
+  if(++LV.cand.n>=2){ if(LV.node) lvOff(); lvOn(p); LV.p=p; LV.cand=null; } }
 $('liveN').addEventListener('change',()=>{ try{ localStorage.setItem(LIVE_KEY,$('liveN').checked?'1':'0'); }catch(e){}
   if($('liveN').checked&&$('hear').checked){ $('hear').checked=false; $('hear').dispatchEvent(new Event('change')); } });
 function tunerLoop(){ if(!rec) return; const r=rec, now=performance.now(), dt=Math.min(0.1,(now-(r.tPrev||now))/1000); r.tPrev=now;
@@ -1844,7 +1845,7 @@ function tunerLoop(){ if(!rec) return; const r=rec, now=performance.now(), dt=Ma
     for(let i=0;i<x.length;i++){ let s=0; for(let k=0;k<q;k++){ s+=r.ring[(r.w-need+i*q+k+r.ring.length*4)%r.ring.length]; } x[i]=s/q; }
     const y=yin(x,r.sr/q); r.noise=Math.min(r.noise*1.002+1e-6,y?Math.max(y.rms,1e-5):r.noise);
     if(y&&y.f&&y.ap<0.3&&y.rms>Math.max(0.002,r.noise*3)) m=69+12*Math.log2(y.f/440); }
-  if(!isNaN(m)){ const L=r.last; if(L.length){ const k=Math.round((L[L.length-1]-m)/12); if(k&&Math.abs(L[L.length-1]-m-12*k)<0.7&&L.length>=3) m+=12*k; } L.push(m); r.mt=r.mt==null||isNaN(r.mt)||Math.abs(m-r.mt)>1.5?m:r.mt+(m-r.mt)*(1-Math.exp(-dt/0.03)); if(L.length>5) L.shift(); m=[...L].sort((a,b)=>a-b)[L.length>>1]; } else { r.last.length=0; r.mt=NaN; }
+  if(!isNaN(m)){ const L=r.last; if(L.length){ const k=Math.round((L[L.length-1]-m)/12); if(k&&Math.abs(L[L.length-1]-m-12*k)<0.7&&L.length>=3) m+=12*k; } r.mRaw=m; L.push(m); r.mt=r.mt==null||isNaN(r.mt)||Math.abs(m-r.mt)>1.5?m:r.mt+(m-r.mt)*(1-Math.exp(-dt/0.03)); if(L.length>3) L.shift(); m=[...L].sort((a,b)=>a-b)[L.length>>1]; } else { r.last.length=0; r.mt=NaN; r.mRaw=NaN; }
   // glide: a smoothed pitch that follows the voice over ~0.15 s
   if(!isNaN(m)){ r.mf=r.mf==null||now-r.lastV>300?m:r.mf+(m-r.mf)*(1-Math.exp(-dt/0.08)); r.me=r.me==null||now-r.lastV>300?m:r.me+(m-r.me)*(1-Math.exp(-dt/tsm().glide)); r.lastV=now; }
   // steady = the glided pitch (which averages out vibrato) stayed within a third of a semitone for ~140 ms
@@ -1904,7 +1905,7 @@ $('delTake').addEventListener('click',async()=>{ if(!curName||(rec&&rec.recordin
   try{ await removeFiles(curName); toast(`Deleted ${curName}`); $('status').textContent='Deleted — the notes on screen are no longer saved anywhere.'; curName=null; curFile=null; showTakeBar(); listTakes(); }
   catch(e){ toast('Could not delete that take'); } });
 $('redo').addEventListener('click',()=>{ if(curName&&!(rec&&rec.recording)) startRec({base:curName,file:curFile}); });
-$('rec').addEventListener('click',()=>{ if(rec&&rec.recording) stopRec(false); else if(WU.on==='done') wuFinish(true); else if(WU.on) return; else if(!voiceProfile()||wuWant()) startWarmup('scale'); else startRec(null); });
+$('rec').addEventListener('click',()=>{ if(rec&&rec.recording) stopRec(false); else if(WU.on==='done') wuFinish(true); else if(WU.on) return; else startRec(null); });
 $('recPause').addEventListener('click',()=>{ if(!rec||!rec.recording) return; const r=rec; r.paused=!r.paused;
   if(r.paused){ r.acc+=performance.now()-r.since; $('recPause').textContent='▶ Resume'; $('status').textContent='Paused — Resume to keep going, Stop to save, Cancel to throw it away.'; $('lvl').style.width='0%'; }
   else { r.since=performance.now(); $('recPause').textContent='❚❚ Pause'; $('status').textContent=r.replace?`Recording over ${r.replace.base} — Stop replaces it, Cancel keeps the original.`:'Recording — sing, then press Stop.'; } });
@@ -1956,7 +1957,7 @@ function startMetro(ctx,bpm){ const beat=60/bpm, M={bpm,beat,t0:ctx.currentTime+
 // A live session = mic + tuner + click. "Listen" opens one without recording; Record records on top of it
 // (opening one first if needed). Stopping a recording keeps the session going if you opened it with Listen.
 async function openLive(keep){ if(rec) return rec; stopPlay(); micTest(false); const ctx=ac(); const stream=await navigator.mediaDevices.getUserMedia({audio:micConstraints()});
-  const src=ctx.createMediaStreamSource(stream), proc=ctx.createScriptProcessor(2048,1,1), mute=ctx.createGain(); mute.gain.value=0;
+  const src=ctx.createMediaStreamSource(stream), proc=ctx.createScriptProcessor(512,1,1), mute=ctx.createGain(); mute.gain.value=0;
   const ring=new Float32Array(ctx.sampleRate);
   const R={stream,src,proc,mute,chunks:[],ring,w:0,sr:ctx.sampleRate,hist:[],last:[],noise:0.01,off:0,me:null,disp:null,shown:null,good:false,raf:0,iv:0,paused:false,acc:0,since:0,recording:false,keep};
   tunerReset();
