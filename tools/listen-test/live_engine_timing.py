@@ -1,7 +1,8 @@
+# Note-change timing of the live engine on synthetic voices. usage: python live_engine_timing.py [older live_engine.py]
 import sys, time, math, importlib.util, numpy as np
 def load(path,name):
     spec=importlib.util.spec_from_file_location(name,path); m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m); return m
-new=load(r"S:\Coding Projects\HumToMidi\live_engine.py","new"); old=load(r"C:\Users\ELIO~1\AppData\Local\Temp\claude\27d622a9de50b635\c72c164e-dc71-4830-889c-6baefe1840c3\scratchpad\live_engine_v1.py","old")
+new=load(r"S:\Coding Projects\HumToMidi\live_engine.py","new"); old=load(sys.argv[1] if len(sys.argv)>1 else r"S:\Coding Projects\HumToMidi\live_engine.py","old")  # pass an older live_engine.py to compare
 sr=44100; rng=np.random.default_rng(1)
 def voice(seq):
     out=[]; ph=0; marks=[]; t=0
