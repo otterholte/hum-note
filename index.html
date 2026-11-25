@@ -1846,7 +1846,7 @@ let liveOK=false, liveOn=false;
 async function liveEngine(on){ if(!liveOK) return; const S=liveSet(), q=new URLSearchParams({snd:S.snd,stick:S.stick,vel:S.vel?1:0,vowel:S.vowel?1:0,vol:S.vol,key:keyPcs(liveKey).join(',')});
   if(on!=null) q.set('on',on?1:0);
   try{ const j=await (await fetch('api/live?'+q,{method:'POST'})).json(); liveOn=!!j.on;
-    $('liveS').textContent=j.on?`Playing from the Humnote app's own audio engine (${j.mode==='direct'?'direct Windows audio':'Windows audio'}, sound card ≈${j.delay_ms} ms)`:liveStatusIdle();
+    $('liveS').textContent=j.on?`Playing from the Humnote app's own audio engine (${j.mode==='ASIO'?'ASIO driver':j.mode==='direct'?'direct Windows audio':'Windows audio'}, sound card ≈${j.delay_ms} ms)`:liveStatusIdle();
     if(on&&!j.on) toast('Couldn’t open the sound card for live notes'); }catch(e){} }
 const liveStatusIdle=()=>liveOK?'Runs in the Humnote app’s own audio engine while you listen or record.':'Runs in the page (slower). Open the Humnote Windows app for the fast engine.';
 // live notes run while the mic is open for listening or recording (not during the warm-up or key finding)
