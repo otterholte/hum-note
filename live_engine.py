@@ -35,6 +35,8 @@ class Analyzer:
         self.acc = 0
         self.choked = False
         self.choke_t = 0.0
+        self.center = None        # where the voice usually sits (follows over ~3 s)
+        self.low_t = None
         self.hist = []            # (t, pitch) of the last 0.4 s of voice, for the octave check
         self.oct_t = None
         self.recent = []
@@ -120,10 +122,26 @@ class Analyzer:
         f, ap = self.yin(w)
         gate = max(0.002, 3.0 * self.noise)
         voiced = rms > gate and ap < 0.3 and 65 <= f <= 1100
-        if not voiced:
-            self.noise += (min(rms, 0.05) - self.noise) * min(1.0, dt / 0.5)
+        # background-noise level: follows quiet moments only (drops fast, rises slowly and only from levels near
+        # it). It must never learn from singing, or loud singing would end up below the gate and go unheard.
+        if rms < self.noise:
+            self.noise += (rms - self.noise) * min(1.0, dt / 0.05)
+        elif not voiced and rms < 2.5 * self.noise:
+            self.noise += (rms - self.noise) * min(1.0, dt / 2.0)
         ev = []
         s = self.stick
+        # range guard: where the voice has been sitting over the last few seconds. A reading 8+ semitones below
+        # it is the tracker catching a rumble or half the pitch (heard as random low notes): an octave slip is
+        # moved back up below; anything else is ignored unless it really lasts (0.3 s)
+        if voiced and self.center is not None:
+            m0 = 69 + 12 * math.log2(f / 440.0)
+            if m0 < self.center - 8 and abs(m0 + 12 - self.center) >= 7:
+                if self.low_t is None:
+                    self.low_t = self.t
+                if self.t - self.low_t < 0.3:
+                    voiced = False
+            else:
+                self.low_t = None
         if voiced:
             m = 69 + 12 * math.log2(f / 440.0)
             # octave slip guard: a sudden jump of about an octave from where the voice has just been is almost always
@@ -132,6 +150,8 @@ class Analyzer:
             ref = self.note
             if ref is None and len(self.hist) >= 5 and self.t - self.hist[-1][0] < 0.3:
                 ref = float(np.median([h[1] for h in self.hist]))
+            if ref is None and self.center is not None:   # after a breath: compare with where the voice usually sits
+                ref = self.center
             if ref is not None:
                 k = round((m - ref) / 12)
                 if k and abs(m - 12 * k - ref) < 2.6:
@@ -141,6 +161,7 @@ class Analyzer:
                         m -= 12 * k
                 else:
                     self.oct_t = None
+            self.center = m if self.center is None else self.center + (m - self.center) * min(1.0, dt / 3.0)
             self.hist.append((self.t, m))
             while self.hist and self.t - self.hist[0][0] > 0.4:
                 self.hist.pop(0)
@@ -499,13 +520,33 @@ class LiveEngine:
         return self.status()
 
     def _stop(self):
+        was_asio = self.stream is not None and self.mode == "ASIO"
         if self.stream:
             try:
                 self.stream.stop(); self.stream.close()
             except Exception:
                 pass
         self.stream = None
+        if was_asio:
+            self._restore_asio()
         return self.status()
+
+    def _restore_asio(self):
+        """Interfaces like the Focusrite keep the last ASIO buffer size for every program. Live notes use a tiny
+        one; left that way, Windows sounds (YouTube...) crackle. Put a large, safe one back at Windows' rate."""
+        try:
+            win_sr = None
+            for h in sd.query_hostapis():
+                if "WASAPI" in h["name"] and h["default_output_device"] >= 0:
+                    win_sr = int(sd.query_devices(h["default_output_device"])["default_samplerate"])
+            for h in sd.query_hostapis():
+                if h["name"] == "ASIO" and h["devices"]:
+                    d = h["devices"][0]
+                    o = sd.OutputStream(device=d, samplerate=win_sr or 48000, channels=2, dtype="float32",
+                                        latency="high", callback=lambda out, f, t, st: out.fill(0))
+                    o.start(); time.sleep(0.15); o.stop(); o.close()
+        except Exception as e:
+            self.error = f"restore buffer: {e}"
 
     def status(self):
         d = round(sum(self.stream.latency) * 1000) if self.stream else None

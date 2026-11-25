@@ -1887,7 +1887,7 @@ function lvOff(){ const N=LV.node; LV.node=null; LV.p=null; if(!N) return; if(N.
   const t=ac().currentTime; N.g.gain.cancelScheduledValues(t); N.g.gain.setTargetAtTime(0,t,0.04); N.os.forEach(o=>{ try{ o.stop(t+0.3); }catch(e){} }); }
 function lvSnap(x){ const pcs=keyPcs(liveKey); let best=Math.round(x),bd=99; for(let q=Math.floor(x)-3;q<=Math.ceil(x)+3;q++) if(pcs.includes(((q%12)+12)%12)&&Math.abs(x-q)<bd){ bd=Math.abs(x-q); best=q; } return best; }
 function lvTick(r,m,now,dt){ liveSync(); if(liveOK||!liveWanted(r)||r.paused){ if(LV.node) lvOff(); LV.cand=null; return; }
-  const sk=+$('liveStick').value/100, x=r.mRaw; if(x==null||isNaN(x)){ LV.quiet+=dt; LV.cand=null; if(LV.quiet>0.04+0.09*sk&&LV.node) lvOff(); return; }
+  LV.dt=dt; const sk=+$('liveStick').value/100, x=rangeFix(LV,r.mRaw,now/1000); if(x==null||isNaN(x)){ LV.quiet+=dt; LV.cand=null; if(LV.quiet>0.04+0.09*sk&&LV.node) lvOff(); return; }
   if(x===LV.lastX) return; LV.lastX=x; // only count new readings
   LV.quiet=0; const p=lvSnap(x);
   if(LV.p!=null&&(p===LV.p||Math.abs(x-LV.p)-Math.abs(x-p)<0.1+0.5*sk)){ LV.cand=null; return; }
@@ -1898,11 +1898,15 @@ $('liveN').addEventListener('change',()=>{ try{ localStorage.setItem(LIVE_KEY,$(
 // ---- notes appear on the roll while you record: the note you're singing, snapped to the key, with the same
 // stickiness as the live notes. A quick sketch; the full transcription replaces it when you press Stop.
 const LR={on:false,notes:[],cur:null,cand:null,quiet:0,lastDraw:0,trace:[]};
+// where the voice has been sitting (follows over ~3 s): a reading 8+ semitones below it is the tracker catching a
+// rumble or half the pitch — moved up an octave if that fits, otherwise ignored unless it lasts 0.3 s
+function rangeFix(S,x,t){ if(x==null||isNaN(x)) return x; if(S.cen!=null&&x<S.cen-8){ if(Math.abs(x+12-S.cen)<7) x+=12; else { if(S.lowT==null) S.lowT=t; if(t-S.lowT<0.3) return NaN; } } else S.lowT=null;
+  S.cen=S.cen==null?x:S.cen+(x-S.cen)*Math.min(1,(S.dt||0.016)/3); return x; }
 function lrTick(r,now,dt){ const cvL=$('liveRoll');
   if(!r.recording){ if(LR.on){ LR.on=false; cvL.hidden=true; } return; }
-  if(!LR.on){ Object.assign(LR,{on:true,notes:[],cur:null,cand:null,quiet:0,trace:[]}); cvL.hidden=false; }
+  if(!LR.on){ Object.assign(LR,{on:true,notes:[],cur:null,cand:null,quiet:0,trace:[],cen:null,lowT:null}); cvL.hidden=false; }
   const t=(r.acc+(r.paused?0:now-r.since))/1000; if(r.paused) return;
-  const sk=+$('liveStick').value/100, x=r.mRaw;
+  LR.dt=dt; const sk=+$('liveStick').value/100, x=rangeFix(LR,r.mRaw,t);
   if(x==null||isNaN(x)){ LR.quiet+=dt; LR.cand=null; if(LR.quiet>0.06+0.08*sk) LR.cur=null; }
   else { LR.quiet=0; LR.trace.push([t,x]); const p=lvSnap(x);
     if(LR.cur&&(p===LR.cur.pitch||Math.abs(x-LR.cur.pitch)-Math.abs(x-p)<0.1+0.5*sk)){ LR.cur.end=t; LR.cand=null; }
