@@ -218,7 +218,8 @@ button.q,label.q{background:transparent;border-color:transparent}button.q:hover,
 <div class="load recBar">
   <button id="rec" type="button" class="recbtn"><span class="dot"></span><span id="recT">Record</span></button>
   <button id="listen" type="button" title="Tuner and click on, without recording — find your note first">🎧 Listen</button>
-  <button id="wuB" type="button" class="q" title="About 15 seconds: Humnote learns your range, your tuning and how you sing syllables">Warm up</button>
+  <button id="wuB" type="button" class="q" title="Sing C, D, E, D, C, holding each for 2 seconds, to check you are on key">Warm up</button>
+  <label class="hearL" id="liveL" title="While recording, hear the notes Humnote hears you sing, played as notes instead of your voice (use headphones)"><input type="checkbox" id="liveN"> Hear notes live</label>
   <button id="recPause" type="button" hidden>❚❚ Pause</button>
   <button id="recCancel" type="button" hidden>✕ Cancel</button>
   <label class="hearL" id="metL" title="A click in your headphones while you listen and record; the take then uses this exact tempo"><input type="checkbox" id="metro"> Click <input type="number" id="metBpm" min="40" max="240" step="1" value="100" aria-label="Click tempo in BPM"> BPM</label>
@@ -239,7 +240,7 @@ button.q,label.q{background:transparent;border-color:transparent}button.q:hover,
       <div class="wuBar"><i id="wuBar"></i></div>
       <p class="wuHint" id="wuHint"></p>
       <ul class="wuRes" id="wuRes" hidden></ul>
-      <div class="wuBtns"><button type="button" id="wuGo" class="primary" hidden>&#9679; Start recording</button><button type="button" id="wuSkip">Skip</button><button type="button" id="wuAgain" hidden>Do it again</button></div>
+      <div class="wuBtns"><button type="button" id="wuGo" class="primary" hidden>&#9679; Start recording</button><button type="button" id="wuPlay">♪ Play the note</button><button type="button" id="wuSkip">Skip</button><button type="button" id="wuAgain" hidden>Do it again</button></div>
     </div>
     <div class="tn quiet" id="tn"><b id="tNote">–</b><span id="tHz">&nbsp;</span></div>
     <svg id="tArc" viewBox="0 0 600 214" aria-hidden="true"></svg>
@@ -1814,6 +1815,25 @@ document.addEventListener('keydown',e=>{ if(!rec||e.ctrlKey||e.metaKey||e.altKey
 function tunerReset(){ buildArc(); $('tNote').textContent='–'; $('tHz').innerHTML='&nbsp;'; $('tCents').innerHTML='&nbsp;'; $('tPill').textContent='Sing a note';
   $('tuner').classList.remove('ok','near','far'); $('tn').classList.add('quiet'); $('tNeedle').setAttribute('transform',`rotate(0 ${T_CX} ${T_CY})`); tunerZone(null); }
 function tunerZone(z){ const on={tZok:z==='ok',tZnL:z==='near-',tZnR:z==='near+',tZfL:z==='far-',tZfR:z==='far+'}; for(const id in on) $(id).setAttribute('opacity',on[id]?'1':'0'); }
+// ---- hear notes live: while recording, the note you're singing plays as a note (your voice is not played back).
+// A note starts once the voice has held the same semitone for ~60 ms, changes after ~70 ms on a new one, stops after ~120 ms of silence.
+const LIVE_KEY='hum2midi_liveN'; try{ $('liveN').checked=localStorage.getItem(LIVE_KEY)!=='0'; }catch(e){ $('liveN').checked=true; }
+const LV={p:null,cand:null,since:0,quiet:0,node:null};
+function lvOn(p){ const ctx=ac(); if(!['keys','flute'].includes(st.snd)){ pianoOn(p,80); LV.node={piano:p}; return; }
+  const t=ctx.currentTime, f=440*2**((p-69)/12), g=ctx.createGain(), lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=Math.min(8000,f*6);
+  const o1=ctx.createOscillator(), o2=ctx.createOscillator(), g2=ctx.createGain(); o1.type=st.snd==='flute'?'sine':'triangle'; o1.frequency.value=f; o2.type='sine'; o2.frequency.value=2*f; g2.gain.value=st.snd==='flute'?0.12:0.25;
+  o1.connect(g); o2.connect(g2); g2.connect(g); g.connect(lp); lp.connect(pianoOut()); g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(0.16,t+(st.snd==='flute'?0.04:0.008));
+  o1.start(t); o2.start(t); LV.node={g,os:[o1,o2]}; }
+function lvOff(){ const N=LV.node; LV.node=null; LV.p=null; if(!N) return; if(N.piano!=null){ pianoOff(N.piano,true); return; }
+  const t=ac().currentTime; N.g.gain.cancelScheduledValues(t); N.g.gain.setTargetAtTime(0,t,0.04); N.os.forEach(o=>{ try{ o.stop(t+0.3); }catch(e){} }); }
+function lvTick(r,m,now,dt){ if(!(r.recording&&!r.paused&&$('liveN').checked)){ if(LV.node) lvOff(); LV.cand=null; return; }
+  if(isNaN(m)||r.mf==null){ LV.quiet+=dt; LV.cand=null; if(LV.quiet>0.12&&LV.node) lvOff(); return; }
+  LV.quiet=0; const p=Math.round(r.mf);
+  if(LV.p!=null&&(p===LV.p||Math.abs(r.mf-LV.p)<0.6)){ LV.cand=null; return; }
+  if(!LV.cand||LV.cand.p!==p){ LV.cand={p,since:now}; return; }
+  if(now-LV.cand.since>=(LV.p==null?60:70)){ if(LV.node) lvOff(); lvOn(p); LV.p=p; LV.cand=null; } }
+$('liveN').addEventListener('change',()=>{ try{ localStorage.setItem(LIVE_KEY,$('liveN').checked?'1':'0'); }catch(e){}
+  if($('liveN').checked&&$('hear').checked){ $('hear').checked=false; $('hear').dispatchEvent(new Event('change')); } });
 function tunerLoop(){ if(!rec) return; const r=rec, now=performance.now(), dt=Math.min(0.1,(now-(r.tPrev||now))/1000); r.tPrev=now;
   const tu=$('tuner'), tn=$('tn');
   if(r.paused){ tn.classList.add('quiet'); tu.classList.add('quiet'); r.raf=requestAnimationFrame(tunerLoop); return; }
@@ -1855,6 +1875,7 @@ function tunerLoop(){ if(!rec) return; const r=rec, now=performance.now(), dt=Ma
   else if(now-(r.lastV||0)>350){ tn.classList.add('quiet'); tu.classList.add('quiet'); }
   if(guideOn){ if(!r.gd) guideStart(r); guideFollow(r); }
   if(WU.on===true) wuTick(r,m,steady,now,dt);
+  lvTick(r,m,now,dt);
   drawTrace(r); r.raf=requestAnimationFrame(tunerLoop); }
 // a calm glowing wave that swells with how loud the mic is, just to show it hears you (flat when silent)
 function drawTrace(r){ if(st.trace==='on'){ drawPitchTrace(r); return; } drawWave(r); }
@@ -1883,7 +1904,7 @@ $('delTake').addEventListener('click',async()=>{ if(!curName||(rec&&rec.recordin
   try{ await removeFiles(curName); toast(`Deleted ${curName}`); $('status').textContent='Deleted — the notes on screen are no longer saved anywhere.'; curName=null; curFile=null; showTakeBar(); listTakes(); }
   catch(e){ toast('Could not delete that take'); } });
 $('redo').addEventListener('click',()=>{ if(curName&&!(rec&&rec.recording)) startRec({base:curName,file:curFile}); });
-$('rec').addEventListener('click',()=>{ if(rec&&rec.recording) stopRec(false); else if(WU.on==='done') wuFinish(true); else if(WU.on) return; else if(!voiceProfile()) startWarmup('full'); else if(wuWant()) startWarmup('quick'); else startRec(null); });
+$('rec').addEventListener('click',()=>{ if(rec&&rec.recording) stopRec(false); else if(WU.on==='done') wuFinish(true); else if(WU.on) return; else if(!voiceProfile()||wuWant()) startWarmup('scale'); else startRec(null); });
 $('recPause').addEventListener('click',()=>{ if(!rec||!rec.recording) return; const r=rec; r.paused=!r.paused;
   if(r.paused){ r.acc+=performance.now()-r.since; $('recPause').textContent='▶ Resume'; $('status').textContent='Paused — Resume to keep going, Stop to save, Cancel to throw it away.'; $('lvl').style.width='0%'; }
   else { r.since=performance.now(); $('recPause').textContent='❚❚ Pause'; $('status').textContent=r.replace?`Recording over ${r.replace.base} — Stop replaces it, Cancel keeps the original.`:'Recording — sing, then press Stop.'; } });
@@ -1947,7 +1968,7 @@ async function openLive(keep){ if(rec) return rec; stopPlay(); micTest(false); c
   rec=R; swiftStart(); $('tuner').hidden=false; R.raf=requestAnimationFrame(tunerLoop);
   if($('metro').checked) R.met=startMetro(ctx,Math.max(40,Math.min(240,+$('metBpm').value||100)));
   liveUI(); return R; }
-function closeLive(){ const r=rec; if(!r) return; rec=null; monitor(false); guideStop(r); if(r.met) r.met.stop(); clearInterval(r.iv); cancelAnimationFrame(r.raf);
+function closeLive(){ const r=rec; if(!r) return; rec=null; lvOff(); monitor(false); guideStop(r); if(r.met) r.met.stop(); clearInterval(r.iv); cancelAnimationFrame(r.raf);
   try{ r.proc.disconnect(); r.src.disconnect(); r.mute.disconnect(); }catch(e){} r.stream.getTracks().forEach(t=>t.stop()); $('tuner').hidden=true; liveUI(); micTest(true); }
 function liveUI(){ const L=$('listen'), on=!!rec, recing=!!(rec&&rec.recording); L.classList.toggle('on',on&&!recing); L.textContent=on&&!recing?'■ Stop listening':'🎧 Listen'; L.disabled=recing; }
 $('listen').addEventListener('click',async()=>{ if(rec){ if(!rec.recording) closeLive(); return; } try{ await openLive(true); $('status').textContent='Listening — find your note, then press Record.'; }catch(e){ toast('Microphone blocked — allow it and try again'); } });
@@ -1961,7 +1982,7 @@ async function startRec(replace){
     R.iv=setInterval(()=>{ const s=(R.acc+(R.paused?0:performance.now()-R.since))/1000; $('recT').textContent=`Stop  ${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`; },200);
     $('rec').classList.add('on'); $('recT').textContent='Stop  0:00'; $('recPause').hidden=false; $('recCancel').hidden=false; $('recPause').textContent='❚❚ Pause'; showTakeBar(); liveUI();
     $('status').textContent=replace?`Recording over ${replace.base} — Stop replaces it, Cancel keeps the original.`:'Recording — sing, then press Stop.';
-    if($('hear').checked) monitor(true);
+    if($('hear').checked&&!$('liveN').checked) monitor(true);
   }catch(e){ toast(e&&e.name==='NotFoundError'?'That microphone is not connected — pick another one':'Microphone blocked — allow it and try again'); $('status').textContent='No microphone access.'; micTest(true); } }
 // ---- microphone picker: choose the input, remembered between launches, with a live level meter to check it
 const MIC_KEY='hum2midi_mic'; let micId=''; try{ micId=localStorage.getItem(MIC_KEY)||''; }catch(e){}
@@ -2000,7 +2021,7 @@ async function monitor(on){ if(!monOK) return; try{ const j=await (await fetch('
   $('hearS').textContent=j.on?`≈${j.delay_ms} ms`:''; if(on&&!j.on) toast('Could not open the headphones for “hear myself”'); }catch(e){} }
 $('hear').addEventListener('change',()=>{ try{ localStorage.setItem(HEAR_KEY,$('hear').checked?'1':'0'); }catch(e){} if(rec&&rec.recording) monitor($('hear').checked); });
 addEventListener('pagehide',()=>{ if(monOK) navigator.sendBeacon('api/monitor?on=0'); });
-async function stopRec(discard){ const r=rec; if(!r||!r.recording) return; r.recording=false; clearInterval(r.iv); monitor(false); const met=r.met; if(met){ met.stop(); r.met=null; }
+async function stopRec(discard){ const r=rec; if(!r||!r.recording) return; r.recording=false; lvOff(); clearInterval(r.iv); monitor(false); const met=r.met; if(met){ met.stop(); r.met=null; }
   $('rec').classList.remove('on'); $('recT').textContent='Record'; $('recPause').hidden=true; $('recCancel').hidden=true;
   if(!r.keep) closeLive(); else liveUI();
   if(discard){ r.chunks.length=0; $('status').textContent=r.replace?`Cancelled — ${r.replace.base} was kept as it was.`:'Recording cancelled — nothing was saved.'; showTakeBar(); return; }
@@ -2032,7 +2053,39 @@ const WU_STEPS={
   da:{say:'Back to your first note: “da da da da”, a clear “d” each time',need:3.5,max:7,syll:true},
   up:{say:'Now a higher note, a few steps up, and hold it in the green',need:1.1,max:8}};
 const wuName=p=>Hum.flatName(p);
-async function startWarmup(mode){ try{ const had=!!rec; const R=rec||await openLive(false); if(!had) R.keep=false;
+// ---- the scale check (every take): sing C, D, E, D, C, each held 2 s in a row within 40 cents, then recording starts.
+// The first C can be in any octave; the rest follow in that octave. Each target is played first (mic ignored meanwhile).
+const SC_OFF=[0,2,4,2,0], SC_HOLD=2.0;
+function scPlay(){ const p=WU.base!=null?WU.base+SC_OFF[WU.i]:WU.refC; if(p==null) return; pianoOn(p,75); setTimeout(()=>pianoOff(p,true),650); WU.mute=performance.now()+900; }
+async function startScale(){ try{ const had=!!rec; const R=rec||await openLive(false); if(!had) R.keep=false; R.wuCap=null;
+    const P=voiceProfile()||{}, mid=P.cMid!=null?P.cMid:P.low!=null&&P.high!=null?(P.low+P.high)/2:54;
+    Object.assign(WU,{on:true,mode:'scale',steps:SC_OFF.map((_,k)=>'s'+k),i:-1,res:{},prof:{...P},base:null,refC:12*Math.round(mid/12),cents:[]});
+    $('wu').hidden=false; $('wuRes').hidden=true; $('wuGo').hidden=true; $('wuAgain').hidden=true; $('wuPlay').hidden=false;
+    $('wuSkip').hidden=!voiceProfile(); $('wuSkip').textContent='Skip, record now'; $('wuTitle').textContent='On key? C · D · E · D · C';
+    $('wuDots').innerHTML=WU.steps.map(()=>'<i></i>').join(''); scNext();
+    $('status').textContent='Sing each note and hold it for 2 seconds. Recording starts after the last one.';
+  }catch(e){ toast('Microphone blocked: allow it and try again'); WU.on=false; } }
+function scNext(){ WU.i++; [...$('wuDots').children].forEach((d,k)=>{ d.className=k<WU.i?'done':k===WU.i?'on':''; });
+  if(WU.i>=WU.steps.length){ scDone(); return; }
+  Object.assign(WU,{S:{scale:true},t0:performance.now(),hold:0,gap:0,bad:0,samp:[]});
+  const nm=WU.base!=null?wuName(WU.base+SC_OFF[WU.i]).replace(/-?\d+$/,''):'C';
+  $('wuSay').textContent=WU.i===0?'Sing a C (any octave) and hold it for 2 seconds':`Now ${nm}, ${WU.i<=2?'up':'down'} a step. Hold it for 2 seconds`;
+  $('wuBar').style.width='0%'; $('wuHint').textContent='Listen…'; scPlay(); }
+function scTick(r,m,now,dt){ if(now<(WU.mute||0)){ $('wuHint').textContent='Listen…'; return; }
+  let tgt=null, d=null; if(!isNaN(m)&&r.me!=null){ tgt=WU.base!=null?WU.base+SC_OFF[WU.i]:12*Math.round(r.me/12); d=r.me-tgt; }
+  const lim=Math.min(45,2*st.tol)/100;
+  if(d!=null&&Math.abs(d)<=lim){ WU.hold+=dt; WU.gap=0; WU.bad=0; WU.samp.push(r.me); $('wuHint').textContent=`${wuName(tgt)}: ${Math.abs(d)<=st.tol/100?'in tune':'close'}, keep holding`; }
+  else if(d==null){ WU.gap+=dt; if(WU.gap>0.25) WU.hold=0; if(WU.hold===0) $('wuHint').textContent='Sing and hold the note'; }
+  else { WU.bad+=dt; if(WU.bad>0.15) WU.hold=0;
+    $('wuHint').textContent=Math.abs(d)>1.5?`That’s ${wuName(Math.round(r.me))}: go ${d>0?'down':'up'} to ${wuName(tgt)}`:d>0?'A little sharp: come down':'A little flat: come up'; }
+  $('wuBar').style.width=Math.min(100,100*WU.hold/SC_HOLD)+'%';
+  if(WU.hold>=SC_HOLD){ const v=[...WU.samp].sort((a,b)=>a-b), med=v[v.length>>1];
+    if(WU.base==null) WU.base=12*Math.round(med/12);
+    WU.cents.push(100*(med-(WU.base+SC_OFF[WU.i]))); scNext(); } }
+function scDone(){ WU.S=null; const P=WU.prof, c=WU.cents, av=c.reduce((a,b)=>a+b,0)/(c.length||1);
+  P.offset=Math.round(P.offset!=null?0.5*P.offset+0.5*av:av); P.cMid=WU.base+2; P.date=new Date().toISOString().slice(0,10); saveProfile(P);
+  $('wuBar').style.width='100%'; toast(`On key (${Math.abs(Math.round(av))} cents ${av>=0?'sharp':'flat'} on average). Recording…`); wuFinish(true); }
+async function startWarmup(mode){ if(mode==='scale') return startScale(); try{ const had=!!rec; const R=rec||await openLive(false); if(!had) R.keep=false;
     Object.assign(WU,{on:true,mode,steps:mode==='full'?['mid','low','high','da']:['mid','up'],i:-1,res:{},prof:{...(voiceProfile()||{})}});
     $('wu').hidden=false; $('wuRes').hidden=true; $('wuGo').hidden=true; $('wuAgain').hidden=true;
     $('wuSkip').hidden=mode==='full'&&!voiceProfile(); $('wuSkip').textContent=mode==='full'?'Skip':'Skip, record now';
@@ -2040,12 +2093,12 @@ async function startWarmup(mode){ try{ const had=!!rec; const R=rec||await openL
     $('wuDots').innerHTML=WU.steps.map(()=>'<i></i>').join(''); wuNext();
     $('status').textContent=mode==='full'?'Warm-up: follow the steps in the tuner.':'Quick check: two notes, then record.';
   }catch(e){ toast('Microphone blocked: allow it and try again'); WU.on=false; } }
-function wuNext(){ const r=rec; WU.i++; [...$('wuDots').children].forEach((d,k)=>{ d.className=k<WU.i?'done':k===WU.i?'on':''; });
+function wuNext(){ $('wuPlay').hidden=true; const r=rec; WU.i++; [...$('wuDots').children].forEach((d,k)=>{ d.className=k<WU.i?'done':k===WU.i?'on':''; });
   if(WU.i>=WU.steps.length){ wuDone(); return; }
   const id=WU.steps[WU.i], S=WU_STEPS[id]; Object.assign(WU,{id,S,t0:performance.now(),hold:0,samp:[],ref:null});
   $('wuSay').textContent=S.say; $('wuBar').style.width='0%'; $('wuHint').textContent=id==='da'&&WU.res.mid?`Your first note was ${wuName(WU.res.mid.p)}.`:'';
   if(r) r.wuCap=S.syll?[]:null; }
-function wuTick(r,m,steady,now,dt){ const S=WU.S; if(!S) return; const el=(now-WU.t0)/1000;
+function wuTick(r,m,steady,now,dt){ const S=WU.S; if(!S) return; if(S.scale) return scTick(r,m,now,dt); const el=(now-WU.t0)/1000;
   if(S.syll){ $('wuBar').style.width=Math.min(100,100*el/S.need)+'%'; if(el>=S.need&&(isNaN(m)||el>=S.max)) wuSyll(); return; }
   // a held note: steady, in the right direction, and (for the first note) within ±25 cents of a semitone
   let good=false; if(!isNaN(m)&&steady&&r.me!=null){ const c=100*(r.me-Math.round(r.me));
@@ -2089,9 +2142,10 @@ function wuDone(){ const R=WU.res, P=WU.prof, L=[]; WU.S=null;
   $('status').textContent='Warm-up done. Press Start recording when you’re ready.'; }
 function wuFinish(go){ WU.on=false; WU.S=null; if(rec) rec.wuCap=null; $('wu').hidden=true; if(go) startRec(null); else if(rec&&!rec.keep&&!rec.recording) closeLive(); }
 $('wuGo').addEventListener('click',()=>wuFinish(true));
+$('wuPlay').addEventListener('click',()=>{ if(WU.S&&WU.S.scale) scPlay(); });
 $('wuSkip').addEventListener('click',()=>{ if(WU.on==='done'){ wuFinish(false); return; } wuFinish(WU.mode==='quick'); });
 $('wuAgain').addEventListener('click',()=>{ const m=WU.mode; wuFinish(false); setTimeout(()=>startWarmup(m),60); });
-$('wuB').addEventListener('click',()=>{ if(rec&&rec.recording) return; if(WU.on) wuFinish(false); setTimeout(()=>startWarmup('full'),60); });
+$('wuB').addEventListener('click',()=>{ if(rec&&rec.recording) return; if(WU.on) wuFinish(false); setTimeout(()=>startWarmup('scale'),60); });
 run(demoBuffer(),true);
 initFolder();
 }
