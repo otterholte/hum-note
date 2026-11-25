@@ -271,7 +271,7 @@ button.q,label.q{background:transparent;border-color:transparent}button.q:hover,
     <div class="meter" id="meter" hidden><i id="lvl"></i></div>
     <details class="tOpts"><summary>Tuner settings</summary><div class="tunerOpts">
       <div class="seg" id="segRef"><button type="button" data-v="a440">A4 = 440 Hz</button><button type="button" data-v="me">Tune to me</button></div>
-      <div class="tSet"><span>Tolerance</span><div class="seg" id="segTol"><button type="button" data-v="10">±10</button><button type="button" data-v="15">±15</button><button type="button" data-v="20">±20</button><button type="button" data-v="25">±25</button></div></div>
+      
       <div class="tSet"><span>Smoothing</span><div class="seg" id="segSmooth"><button type="button" data-v="low">Low</button><button type="button" data-v="med">Medium</button><button type="button" data-v="high">High</button><button type="button" data-v="voice">Voice</button></div></div>
       <div class="tSet"><span>Pitch detector</span><div class="seg" id="segDet"><button type="button" data-v="ai">AI (SwiftF0)</button><button type="button" data-v="classic">Classic</button></div><span class="status" id="tDetS"></span></div>
       <div class="tSet"><span>Pitch trace</span><div class="seg" id="segTrace"><button type="button" data-v="off">Off</button><button type="button" data-v="on">On</button></div></div>
@@ -1017,7 +1017,9 @@ if(typeof module!=='undefined') module.exports=Hum;
 {
 const $=id=>document.getElementById(id);
 const st={F:null,buf:null,res:null,notes:[],detected:null,edited:false,key:1,stick:10,tr:0,snd:'piano',hear:'both',ref:'a440',demo:true,pos:0,loop:null,sel:-1,tempo:null,div:2,qs:60,vib:'keep',vibSens:0.7,ts:4,drift:'on',tol:20,smooth:'voice',trace:'off',det:'ai',ver:0,scoreClean:false,scoreChords:false,scoreOct:0};
-try{ const s=JSON.parse(localStorage.getItem('hum2midi')||'{}'); if(!localStorage.getItem('hum2midi_v5')){ delete s.smooth; localStorage.setItem('hum2midi_v5','1'); } if(!localStorage.getItem('hum2midi_v7')){ delete s.tol; localStorage.setItem('hum2midi_v6','1'); localStorage.setItem('hum2midi_v7','1'); } ['key','stick','snd','hear','ref','div','qs','vib','vibSens','ts','tol','smooth','trace','drift','det'].forEach(k=>{ if(s[k]!=null) st[k]=s[k]; }); }catch(e){}
+try{ const s=JSON.parse(localStorage.getItem('hum2midi')||'{}'); if(!localStorage.getItem('hum2midi_v5')){ delete s.smooth; localStorage.setItem('hum2midi_v5','1'); } if(!localStorage.getItem('hum2midi_v7')){ delete s.tol; localStorage.setItem('hum2midi_v6','1'); localStorage.setItem('hum2midi_v7','1'); } ['key','stick','snd','hear','ref','div','qs','vib','vibSens','ts','smooth','trace','drift','det'].forEach(k=>{ if(s[k]!=null) st[k]=s[k]; });
+  // the tuner's colours are fixed: green within ±20 cents, yellow 20-40, red beyond (never taken from saved settings)
+  st.tol=20; }catch(e){}
 const saveSet=()=>{ try{ localStorage.setItem('hum2midi',JSON.stringify({key:st.key,stick:st.stick,snd:st.snd,hear:st.hear,ref:st.ref,div:st.div,qs:st.qs,vib:st.vib,vibSens:st.vibSens,ts:st.ts,drift:st.drift,tol:st.tol,smooth:st.smooth,trace:st.trace,det:st.det})); }catch(e){} };
 const toast=t=>{ const el=$('toast'); el.textContent=t; el.classList.add('show'); clearTimeout(toast.h); toast.h=setTimeout(()=>el.classList.remove('show'),3200); };
 let AC=null; const ac=()=>{ if(!AC) AC=new (window.AudioContext||window.webkitAudioContext)(); if(AC.state==='suspended') AC.resume(); return AC; };
@@ -1393,8 +1395,8 @@ $('qStr').addEventListener('change',saveSet);
 $('qBtn').addEventListener('click',()=>{ applyQ(st.qs/100); toast(`Quantized ${st.qs}% toward the ${({1:'quarter-note',2:'eighth-note',4:'sixteenth-note',3:'triplet'})[st.div]} grid — move the lever to adjust, Undo to go back`); });
 $('qExact').addEventListener('click',()=>{ applyQ(1); $('qStr').value=100; $('qStrV').textContent='100%'; toast('Snapped exactly to the grid — Undo to go back'); });
 seg('segVib','vib',()=>render());
-function tKey(){ const T=st.tol; $('tKey').innerHTML=`<b style="color:var(--good)">±${T}¢ in tune</b> · <b style="color:var(--warn)">${T}–${Math.min(45,2*T)}¢ a little off</b> · <b style="color:var(--bad)">more = off</b>`; $('tuner').classList.toggle('trace',st.trace==='on'); }
-seg('segTol','tol',()=>{ buildArc(true); if(rec&&rec.zone){ rec.zone=null; } tKey(); });
+function tKey(){ const T=st.tol; $('tKey').innerHTML=`<b style="color:var(--good)">±${T}¢ in tune</b> · <b style="color:var(--warn)">${T}–${2*T}¢ a little off</b> · <b style="color:var(--bad)">more = off</b>`; $('tuner').classList.toggle('trace',st.trace==='on'); }
+
 seg('segSmooth','smooth'); seg('segDet','det',()=>{ swiftStart(); tDet(); }); setTimeout(tDet,0); seg('segTrace','trace',tKey); tKey();
 { // Auto: meter and bar 1 found from the singing; 4/4 or 3/4: yours (bar 1 still found for that meter)
   try{ st.tsAuto=localStorage.getItem('hum2midi_tsAuto')!=='0'; }catch(e){ st.tsAuto=true; }
@@ -1806,7 +1808,7 @@ const T_DEG=1.2, T_CX=300, T_CY=300, T_R=250;
 // Smoothing: how fast the reading follows you (glide/needle time constants, label patience, steady window)
 const TSM={low:{glide:0.06,cz:0.12,pat:200,win:70,nm:50},med:{glide:0.12,cz:0.3,pat:350,win:80,nm:60},high:{glide:0.2,cz:0.5,pat:500,win:90,nm:70},voice:{glide:0.18,cz:0.5,pat:450,win:80,nm:40}};
 const tsm=()=>TSM[st.smooth]||TSM.voice; // 1.2° per cent: -50..+50 cents spans ±60°
-function buildArc(force){ const svg=$('tArc'); if(svg.childElementCount&&!force) return; const T=st.tol, T2=Math.min(45,2*T); const pt=(c,r)=>{ const a=c*T_DEG*Math.PI/180; return [T_CX+r*Math.sin(a),T_CY-r*Math.cos(a)]; };
+function buildArc(force){ const svg=$('tArc'); if(svg.childElementCount&&!force) return; const T=st.tol, T2=2*T; const pt=(c,r)=>{ const a=c*T_DEG*Math.PI/180; return [T_CX+r*Math.sin(a),T_CY-r*Math.cos(a)]; };
   const arc=(c0,c1,r)=>{ const [x0,y0]=pt(c0,r),[x1,y1]=pt(c1,r); return `M${x0.toFixed(1)} ${y0.toFixed(1)}A${r} ${r} 0 0 1 ${x1.toFixed(1)} ${y1.toFixed(1)}`; };
   let h=`<defs><filter id="tGlow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="7" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
     <linearGradient id="tFade" x1="0" x2="1"><stop offset="0" stop-color="#24252c" stop-opacity=".25"/><stop offset=".5" stop-color="#2c2d35"/><stop offset="1" stop-color="#24252c" stop-opacity=".25"/></linearGradient></defs>
@@ -1916,8 +1918,8 @@ function tunerLoop(){ if(!rec) return; const r=rec, now=performance.now(), dt=Ma
     if(r.cz!=null){ $('tNeedle').setAttribute('transform',`rotate(${(r.cz*T_DEG).toFixed(2)} ${T_CX} ${T_CY})`);
       if(now-(r.tTxt||0)>300){ r.tTxt=now; const cr=Math.round(r.cz); $('tCents').textContent=(cr>0?'+':cr<0?'−':'')+Math.abs(cr)+'¢'; $('tHz').textContent=(440*2**((r.me-69)/12)).toFixed(1)+' Hz'; }
       // label with a little patience, so it doesn't flicker
-      // green within the tolerance, yellow up to twice it, red past that — with a 3¢ margin so it doesn't flip back and forth on a border
-      const a=Math.abs(r.cz), wasOk=r.zone==='ok', wasFar=/far/.test(r.zone||''), T=st.tol, mg=Math.max(1.5,T*0.2), okLim=wasOk?T+mg:T-mg, farLim=wasFar?Math.min(45,2*T)-mg:Math.min(45,2*T)+mg;
+      // green within ±20¢, yellow 20-40¢, red past that
+      const a=Math.abs(r.cz), wasOk=r.zone==='ok', wasFar=/far/.test(r.zone||''), T=st.tol, okLim=T, farLim=2*T; // exactly: green within ±20¢, yellow to ±40¢, red beyond (the label's patience stops flicker)
       const zone=a<=okLim?'ok':a<=farLim?(r.cz>0?'near+':'near-'):(r.cz>0?'far+':'far-');
       if(zone!==r.zone){ if(!r.zc||r.zc.v!==zone) r.zc={v:zone,since:now}; else if(now-r.zc.since>tsm().pat||r.zone==null){ r.zone=zone; r.zc=null;
         tu.classList.remove('ok','near','far'); tu.classList.add(zone.replace(/[+-]/,''));

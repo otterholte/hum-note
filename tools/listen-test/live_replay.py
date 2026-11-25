@@ -17,10 +17,11 @@ def run(x,sr,stick,allowed,verbose=False):
         if v: voiced+=1; silent_voiced+= (not playing) or choked
     dur=len(x)/sr; c=lambda k: sum(1 for e in ev if e[1]==k)
     return dict(dur=round(dur,1), ons=c('on'), offs=c('off'), chokes=c('choke'), unchokes=c('unchoke'), silent_while_singing=f"{100*silent_voiced/max(1,voiced):.0f}%"), ev
-for f in sys.argv[1:]:
-    x,sr=read(f); x=x/ (np.abs(x).max()+1e-9)*0.3
-    print(f, sr)
-    key={'235532':[5,7,9,10,0,2,4],'235350':[2,4,6,7,9,11,1]}[[k for k in ('235532','235350') if k in f][0]]
-    for name,al in (('in its key',key),('any note',range(12))):
-        for stick in (0.0,0.5,1.0):
-            r,ev=run(x,sr,stick,al); print('  ',name,'stick',stick,r)
+if __name__ == '__main__':
+  for f in sys.argv[1:]:
+      x,sr=read(f); x=x/ (np.abs(x).max()+1e-9)*0.3
+      print(f, sr)
+      key={'235532':[5,7,9,10,0,2,4],'235350':[2,4,6,7,9,11,1]}[[k for k in ('235532','235350') if k in f][0]]
+      for name,al in (('in its key',key),('any note',range(12))):
+          for stick in (0.0,0.5,1.0):
+              r,ev=run(x,sr,stick,al); print('  ',name,'stick',stick,r)

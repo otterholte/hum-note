@@ -34,6 +34,7 @@ def find_chrome():
 def main():
     srv = server.make_server()
     if srv:
+        server.LIVE.warm()  # the audio engine gets its own process, started now so Listen is instant
         threading.Thread(target=srv.serve_forever, daemon=True).start()
     for _ in range(50):  # wait until the helper answers
         try:
@@ -52,7 +53,7 @@ def main():
     p.wait()
     if srv:
         server.MON.stop()
-        server.LIVE.stop()
+        server.LIVE.close()
         srv.shutdown()
 
 

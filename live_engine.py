@@ -199,11 +199,11 @@ class Analyzer:
                 held = self.t - self.on_t
                 if p != self.note:
                     margin = away - abs(m - p)
-                    need = 0.12 + 0.45 * s
-                    force = self.choked and self.t - self.choke_t > 0.04
+                    need = 0.12 + 0.45 * s + 0.15 * s * s   # the top of the slider holds notes extra firmly
+                    force = self.choked and self.t - self.choke_t > 0.04 + 0.06 * s
                     if margin > need or force:
                         if self.cand and self.cand[0] == p:
-                            if force or (steady and self.t - self.cand[1] >= 0.036 * s and held >= 0.03 + 0.05 * s):
+                            if force or (steady and self.t - self.cand[1] >= 0.036 * s and held >= 0.03 + 0.05 * s + 0.07 * s * s):
                                 ev.append(("on", p, self.vel(rms)))
                                 self.note, self.cand, self.peak, self.dipped, self.choked, self.on_t = p, None, rms, False, False, self.t
                         else:
@@ -231,15 +231,21 @@ class Analyzer:
 
 
 class Synth:
-    """One voice at a time (like singing). Band-limited oscillators + a low-pass filter per block."""
+    """One voice at a time (like singing). Band-limited oscillators + a low-pass filter.
+    Nothing ever jumps: a new note slides from the old one in ~12 ms at the current volume (legato) with a small
+    accent, a "choke" only dips the old note to about half, and the new one swells back in over ~15 ms (6 ms for pluck), and the tone filter moves smoothly.
+    (Sudden volume or filter steps are what you hear as clicks and pops.)"""
+
+    ATTACK = {"pluck": 0.003, "keys": 0.005, "bass": 0.004, "pad": 0.06, "lead": 0.005}
 
     def __init__(self, sr):
         self.sr = sr
         self.snd = "pluck"
         self.vol = 0.8
-        self.f = 220.0
+        self.f = self.f_target = 220.0
         self.ph = 0.0
         self.amp = 0.0
+        self.a0 = 0.0
         self.age = 9.0
         self.gate = False
         self.v = 0.8
@@ -247,54 +253,72 @@ class Synth:
         self.tone = 0.5
         self.vowel = True
         self.choke = False
+        self.duck = None
+        self.fc = None
+        self.legato = False
 
     def on(self, note, v):
-        self.f = 440.0 * 2 ** ((note - 69) / 12)
-        self.v, self.gate, self.age, self.choke = v, True, 0.0, False
+        ft = 440.0 * 2 ** ((note - 69) / 12)
+        legato = self.gate and self.amp > 0.01
+        self.f_target = ft
+        if not legato:
+            self.f = ft
+        self.a0 = self.amp            # the new note starts from wherever the sound is now
+        self.legato = legato
+        self.v, self.gate, self.age, self.choke, self.duck = v, True, 0.0, False, None
 
     def off(self):
         self.gate = False
 
+    def _env(self, t):
+        snd = self.snd
+        if snd == "pluck":
+            return 0.25 + 0.75 * np.exp(-t / 0.35)
+        if snd == "keys":
+            return 0.35 + 0.65 * np.exp(-t / 0.6)
+        if snd == "bass":
+            return 0.55 + 0.45 * np.exp(-t / 0.4)
+        return np.ones_like(t)
+
     def render(self, n):
-        sr, f, snd = self.sr, self.f, self.snd
-        t = self.age + np.arange(n) / sr
-        # amplitude envelope
-        if self.gate and self.choke:
-            a = self.amp * np.exp(-np.arange(1, n + 1) / (0.003 * sr))
-        elif self.gate:
-            if snd == "pluck":
-                env = 0.25 + 0.75 * np.exp(-t / 0.35)
-                att = 0.002
-            elif snd == "keys":
-                env = 0.35 + 0.65 * np.exp(-t / 0.6)
-                att = 0.003
-            elif snd == "bass":
-                env = 0.55 + 0.45 * np.exp(-t / 0.4)
-                att = 0.003
-            elif snd == "pad":
-                env = np.ones(n)
-                att = 0.06
-            else:
-                env = np.ones(n)
-                att = 0.004
-            env = env * np.minimum(1.0, t / att)
-            target = env * self.v
-            # glide from the current level so a note change never clicks
-            k = np.minimum(1.0, np.arange(1, n + 1) / (0.002 * sr))
-            a = self.amp + (target - self.amp) * k
+        sr, snd = self.sr, self.snd
+        idx = np.arange(1, n + 1)
+        # pitch: slide to the new note over ~12 ms (smooth in pitch, so no step in the waveform)
+        if abs(self.f - self.f_target) > 1e-3:
+            g = np.exp(-idx / (0.004 * sr))
+            fa = self.f_target * (self.f / self.f_target) ** g
+            self.f = float(fa[-1]) if abs(fa[-1] / self.f_target - 1) > 1e-4 else self.f_target
         else:
-            rel = 0.12 if snd in ("pluck", "keys") else 0.05 if snd != "pad" else 0.25
-            a = self.amp * np.exp(-np.arange(1, n + 1) / (rel * sr))
+            fa = np.full(n, self.f_target)
+        t = self.age + idx / sr
+        # volume
+        if self.gate and self.choke:
+            if self.duck is None:
+                self.duck = 0.55 * self.amp
+            a = self.duck + (self.amp - self.duck) * np.exp(-idx / (0.004 * sr))
+        elif self.gate:
+            if not self.choke:
+                self.duck = None
+            att = self.ATTACK.get(snd, 0.005)
+            if self.legato:   # a note change swells in instead of re-striking hard
+                att = max(att, 0.006 if snd == "pluck" else 0.015)
+            target = self._env(t) * self.v
+            a = self.a0 + (target - self.a0) * np.minimum(1.0, t / att)
+            # coming back from a dip, or any other mismatch: glide there over ~3 ms
+            a = self.amp + (a - self.amp) * np.minimum(1.0, idx / (0.003 * sr))
+        else:
+            rel = 0.12 if snd in ("pluck", "keys") else 0.25 if snd == "pad" else 0.05
+            a = self.amp * np.exp(-idx / (rel * sr))
         self.amp = float(a[-1])
         self.age += n / sr
         if self.amp < 1e-4 and not self.gate:
             self.zi[:] = 0
+            self.fc = None
             return np.zeros(n, np.float32)
         # oscillator
-        inc = 2 * np.pi * f / sr
-        ph = self.ph + inc * np.arange(1, n + 1)
+        ph = self.ph + np.cumsum(2 * np.pi * fa / sr)
         self.ph = float(ph[-1] % (2 * np.pi))
-        K = max(1, min(30, int(0.45 * sr / f)))
+        K = max(1, min(30, int(0.45 * sr / float(fa.max()))))
         ks = np.arange(1, K + 1)[:, None]
         if snd == "keys":
             w = np.sin(ph) + 0.3 * np.sin(2 * ph) + 0.12 * np.sin(3 * ph)
@@ -311,8 +335,9 @@ class Synth:
         mult = lo * (hi / lo) ** base
         if snd == "pluck":
             mult *= 1 + 3.0 * math.exp(-self.age / 0.08)
-        fc = min(0.45 * sr, max(80.0, f * mult))
-        wc = math.tan(math.pi * fc / sr)
+        fc = min(0.45 * sr, max(80.0, self.f * mult))
+        self.fc = fc if self.fc is None else self.fc + (fc - self.fc) * min(1.0, n / sr / 0.01)
+        wc = math.tan(math.pi * self.fc / sr)
         q = 0.9
         k0 = 1 / (1 + wc / q + wc * wc)
         b = np.array([wc * wc * k0, 2 * wc * wc * k0, wc * wc * k0])
@@ -350,7 +375,31 @@ class LiveEngine:
             self.S.vol = float(P["vol"])
             self.S.vowel = bool(P["vowel"])
 
+    def test_voice(self, on=True):
+        """tests only: sing a synthetic voice (G3 A3 B3 C#4 D#4 ...) instead of the mic, and time the callbacks"""
+        st = {"ph": 0.0, "t": 0.0}
+        def fake(n):
+            sr = self.stream.samplerate if self.stream else 48000
+            t = st["t"] + np.arange(n) / sr
+            f = 196 * 2 ** ((np.floor(t * 3) % 5) * 2 / 12)
+            ph = st["ph"] + 2 * np.pi * np.cumsum(f) / sr
+            st["ph"], st["t"] = ph[-1], t[-1] + 1 / sr
+            return (sum((0.5 / k) * np.sin(k * ph) for k in range(1, 10)) * 0.1).astype(np.float32)
+        self.fake = fake if on else None
+        self.stamps = [] if on else None
+        return self.status()
+
+    def timing(self):
+        st = getattr(self, "stamps", None)
+        if not st or not self.stream:
+            return {}
+        blk = self.stream.blocksize / self.stream.samplerate if self.stream.blocksize else 0.001
+        g = np.diff(np.array(st))
+        return {"callbacks": len(st), "block_ms": round(blk * 1000, 2), "over_4_blocks": int((g > 4 * blk).sum()), "longest_ms": round(float(g.max()) * 1000, 1)}
+
     def _cb(self, indata, outdata, frames, t, status):
+        if getattr(self, "stamps", None) is not None:
+            self.stamps.append(time.perf_counter())
         x = indata.sum(axis=1).astype(np.float32)
         if self.fake is not None:  # tests only: a synthetic voice instead of the mic
             x = self.fake(len(x))
@@ -432,8 +481,8 @@ class LiveEngine:
                 ind, outd = sd.query_devices(di), sd.query_devices(do)
                 sr = sr0 or int(outd["default_samplerate"])
                 self.dec = 2 if sr >= 88200 else 1
-                if label == "ASIO" and self.dec == 2:
-                    bs = 64
+                if label == "ASIO":   # ~1.3 ms blocks: a little headroom so a busy moment never becomes a pop
+                    bs = 128 if self.dec == 2 else 64
                 self.A, self.S = Analyzer(sr // self.dec), Synth(sr)
                 self._apply()
                 self.xruns = 0
@@ -465,4 +514,89 @@ class LiveEngine:
                 "note": self.last["note"], "midi": self.last["midi"], **{k: self.params[k] for k in ("stick", "snd", "vel", "vowel", "vol")}}
 
 
-LIVE = LiveEngine()
+def _child(conn):
+    """The audio engine's own process: nothing the app's helper does (web requests, saving takes) can make
+    the audio wait. Runs at high priority."""
+    try:
+        import ctypes
+        k = ctypes.windll.kernel32
+        k.GetCurrentProcess.restype = ctypes.c_void_p          # a 64-bit handle (as a plain int it's invalid)
+        k.SetPriorityClass.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+        k.SetPriorityClass(k.GetCurrentProcess(), 0x80)  # HIGH_PRIORITY_CLASS
+    except Exception:
+        pass
+    eng = LiveEngine()
+    while True:
+        try:
+            cmd, kw = conn.recv()
+        except (EOFError, OSError):
+            break
+        if cmd == "quit":
+            eng.stop()
+            conn.send({})
+            break
+        try:
+            r = getattr(eng, cmd)(**kw)
+        except Exception as e:
+            r = eng.status(); r["error"] = repr(e)
+        conn.send(r)
+    try:
+        eng.stop()
+    except Exception:
+        pass
+
+
+class EngineProcess:
+    """Same calls as LiveEngine (start / stop / set / status), forwarded to the engine's own process."""
+
+    def __init__(self):
+        self.ok = OK
+        self.p = self.conn = None
+        self.lock = threading.Lock()
+
+    def _ensure(self):
+        if self.p is not None and self.p.is_alive():
+            return
+        import multiprocessing as mp
+        ctx = mp.get_context("spawn")
+        a, b = ctx.Pipe()
+        self.p = ctx.Process(target=_child, args=(b,), daemon=True, name="humnote-audio")
+        self.p.start()
+        self.conn = a
+
+    def _call(self, cmd, **kw):
+        with self.lock:
+            try:
+                self._ensure()
+                self.conn.send((cmd, kw))
+                if self.conn.poll(30):
+                    return self.conn.recv()
+            except Exception as e:
+                return {"available": self.ok, "on": False, "error": f"audio engine: {e!r}"}
+            return {"available": self.ok, "on": False, "error": "audio engine not responding"}
+
+    def start(self): return self._call("start")
+    def stop(self): return self._call("stop")
+    def status(self): return self._call("status")
+    def set(self, **p): return self._call("set", **p)
+    def test_voice(self, on=True): return self._call("test_voice", on=on)
+    def timing(self): return self._call("timing")
+
+    def warm(self):
+        """start the engine process in the background (so the first Listen is instant)"""
+        threading.Thread(target=self.status, daemon=True).start()
+
+    def close(self):
+        if self.p is not None and self.p.is_alive():
+            try:
+                with self.lock:
+                    self.conn.send(("quit", {}))
+                    self.conn.poll(5)
+            except Exception:
+                pass
+            self.p.join(3)
+            if self.p.is_alive():
+                self.p.terminate()
+
+
+LIVE = EngineProcess()
