@@ -3,6 +3,7 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Humnote</title>
 <link rel="icon" type="image/png" href="icon.png">
+<link rel="stylesheet" href="studio.css">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -12,9 +13,9 @@
    COLOUR and TYPE: deep ink-violet ground at night / bright paper by day, one coral accent for notes, grey voice line; Familjen Grotesk + Inter.
    LAYOUT: modest title, then roll, transport, findings, notes, settings, export — one column that reads on a phone. */
 :root{color-scheme:light dark;
---bg:light-dark(#f7f6f3,#1c1d21);--panel:light-dark(#ffffff,#232429);--ink:light-dark(#1b1824,#cfd0d5);--mute:light-dark(#6c6878,#8c8e97);
---line:light-dark(#e6e3ec,#30323a);--row:light-dark(#efedf3,#202126);--acc:light-dark(#ff5a4e,#d9705f);--acc2:light-dark(#2b7de9,#7f9fcf);--voice:light-dark(#8b8798,#7c7e88);--ok:light-dark(#178a4c,#5fb385);
---selbg:light-dark(#1b1824,#3a3c45);--selink:light-dark(#ffffff,#e6e7ea)}
+--bg:light-dark(#f6f5fb,#0b0d1a);--panel:light-dark(#ffffff,#141729);--ink:light-dark(#1b1824,#eceaf6);--mute:light-dark(#6c6878,#8d8fa8);
+--line:light-dark(#e6e3ec,#262a45);--row:light-dark(#efedf6,#10132a);--acc:light-dark(#6d28d9,#8b5cf6);--acc2:light-dark(#2b7de9,#60a5fa);--voice:light-dark(#8b8798,#6b6f8c);--ok:light-dark(#178a4c,#5fb385);
+--selbg:light-dark(#1b1824,#2a2350);--selink:light-dark(#ffffff,#e6e7ea)}
 :root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
 *{box-sizing:border-box;min-width:0}
 [hidden]{display:none!important}
@@ -107,7 +108,7 @@ canvas{display:block}
 .lever output{min-width:4ch;color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
 .notes li button.sel{outline:3px solid var(--acc2);outline-offset:1px}
 /* tuner: always dark, neon orange, calm */
-.tuner{--neon:#ff7a1a;--tink:#f3f1f6;--tmute:#8c8a97;--tline:#2a2b33;color:var(--tink);color-scheme:dark;
+.tuner{--neon:#a78bfa;--tink:#f3f1f6;--tmute:#8c8a97;--tline:#2a2b33;color:var(--tink);color-scheme:dark;
   background:radial-gradient(120% 90% at 50% 35%,#1a1714 0%,#0e0f13 55%,#0a0b0e 100%);border:1px solid #23242b;border-radius:20px;
   padding:22px clamp(14px,3vw,32px) 16px;margin:0 0 14px;display:flex;flex-direction:column;align-items:center;gap:6px}
 .tn{text-align:center;transition:opacity .5s}.tn.quiet{opacity:.3}
@@ -283,7 +284,7 @@ button.q,label.q{background:transparent;border-color:transparent}button.q:hover,
   <div class="roll" id="roll">
     <canvas id="liveRoll" hidden aria-label="Notes appearing live as you record"></canvas>
     <button type="button" class="fsB" id="fsB" title="Full screen (Esc to leave)">⛶</button>
-    <div class="selBar" id="selBar" hidden><span id="selN"></span><button type="button" id="selDel">🗑 Delete</button><button type="button" id="selNone" aria-label="Unselect">✕</button></div>
+    <div class="selBar" id="selBar" hidden><span id="selN"></span><label class="selVel" title="How hard the selected notes are played">Velocity <input type="range" id="selVel" min="1" max="127"></label><button type="button" id="selDel">🗑 Delete</button><button type="button" id="selNone" aria-label="Unselect">✕</button></div>
     <div class="keys"><canvas id="kc"></canvas></div>
     <div class="scroll" id="sc"><canvas id="cv"></canvas><div class="loopr" id="loopR" hidden></div><div class="ph" id="ph"></div></div>
   </div>
@@ -1161,11 +1162,32 @@ function tone(ctx,p,t,d,vel,dest,bag,vc){
   if(st.snd==='piano'&&PIANO.ready){ const V=pianoVoice(ctx,p,vel,t,dest); V.stop(t+d); V.srcs.forEach(s=>bag.push(s)); return; }
   const f=440*2**((p-69)/12), g=ctx.createGain(), v=0.22*vel/100; g.connect(dest);
   const mk=(type,mul,amp)=>{ const o=ctx.createOscillator(), og=ctx.createGain(); o.type=type; o.frequency.value=f*mul; og.gain.value=amp; o.connect(og); og.connect(g); if(vc&&vc.length>1&&d>0.02) o.detune.setValueCurveAtTime(vc,t,d); o.start(t); o.stop(t+d+0.4); bag.push(o); };
+  if(st.snd==='drums'){ drumHit(ctx,p,t,vel,dest,bag); g.disconnect(); return; }
   if(st.snd==='keys'){ mk('triangle',1,1); mk('sine',2,0.25); g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(v,t+0.005); g.gain.setTargetAtTime(v*0.35,t+0.01,0.25); }
+  else if(st.snd==='guitar'){ // plucked string: bright attack that darkens and fades
+    const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.setValueAtTime(Math.min(9000,f*14),t); lp.frequency.exponentialRampToValueAtTime(Math.max(200,f*2.5),t+0.6); g.disconnect(); g.connect(lp); lp.connect(dest);
+    mk('sawtooth',1,0.55); mk('triangle',2,0.25); g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(v*1.2,t+0.003); g.gain.setTargetAtTime(v*0.15,t+0.004,0.35); }
+  else if(st.snd==='egtr'){ // electric: driven square/saw, sustains
+    const ws=ctx.createWaveShaper(), cur=new Float32Array(256); for(let i=0;i<256;i++){ const x=i/128-1; cur[i]=Math.tanh(2.5*x); } ws.curve=cur; const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=Math.min(5000,f*8);
+    g.disconnect(); g.connect(ws); ws.connect(lp); lp.connect(dest); mk('sawtooth',1,0.6); mk('square',1.003,0.4); g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(v*0.9,t+0.006); g.gain.setTargetAtTime(v*0.6,t+0.01,0.3); }
+  else if(st.snd==='bass'){ const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=Math.min(1600,f*5); g.disconnect(); g.connect(lp); lp.connect(dest);
+    mk('sawtooth',1,0.5); mk('sine',1,0.9); g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(v*1.3,t+0.005); g.gain.setTargetAtTime(v*0.7,t+0.01,0.25); }
+  else if(st.snd==='synth'){ const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=Math.min(8000,f*10); lp.Q.value=4; g.disconnect(); g.connect(lp); lp.connect(dest);
+    mk('sawtooth',1,0.5); mk('sawtooth',1.006,0.5); mk('square',0.5,0.25); g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(v*0.8,t+0.01); }
+  else if(st.snd==='strings'){ const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=Math.min(6000,f*6); g.disconnect(); g.connect(lp); lp.connect(dest);
+    mk('sawtooth',1,0.4); mk('sawtooth',1.004,0.4); mk('sawtooth',0.997,0.4); g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(v*0.8,t+0.12); }
   else if(st.snd==='flute'){ mk('sine',1,1); mk('sine',2,0.12); g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(v,t+0.04); }
   else { mk('square',1,0.35); g.gain.setValueAtTime(v,t); }
   g.gain.setTargetAtTime(0,t+d,0.04);
 }
+// drums from a sung line: low notes = kick, middle = snare, high = hi-hat (relative to the part's own range)
+function drumHit(ctx,p,t,vel,dest,bag){ const lo=st.drumLo??p-6, hi=st.drumHi??p+6, r=(p-lo)/Math.max(1,hi-lo), v=0.5*vel/100, g=ctx.createGain(); g.connect(dest);
+  if(r<0.34){ const o=ctx.createOscillator(); o.frequency.setValueAtTime(140,t); o.frequency.exponentialRampToValueAtTime(42,t+0.12); o.connect(g); g.gain.setValueAtTime(v*1.6,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.3); o.start(t); o.stop(t+0.32); bag.push(o); return; }
+  const n=ctx.createBufferSource(), len=Math.round(ctx.sampleRate*0.25), b=ctx.createBuffer(1,len,ctx.sampleRate), d=b.getChannelData(0); for(let i=0;i<len;i++) d[i]=Math.random()*2-1; n.buffer=b;
+  const f=ctx.createBiquadFilter(); n.connect(f); f.connect(g);
+  if(r<0.67){ f.type='bandpass'; f.frequency.value=1800; f.Q.value=0.7; g.gain.setValueAtTime(v*1.3,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.18); const o=ctx.createOscillator(); o.frequency.value=190; const og=ctx.createGain(); og.gain.setValueAtTime(v*0.7,t); og.gain.exponentialRampToValueAtTime(0.001,t+0.08); o.connect(og); og.connect(dest); o.start(t); o.stop(t+0.1); bag.push(o); }
+  else { f.type='highpass'; f.frequency.value=7000; g.gain.setValueAtTime(v*0.6,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.06); }
+  n.start(t); n.stop(t+0.25); bag.push(n); }
 let pb=null, activeChip=-1;
 function markChip(i){ if(i===activeChip) return; activeChip=i; document.querySelectorAll('#notes button').forEach(b=>b.classList.toggle('on',+b.dataset.i===i)); }
 // the vibrato wave of note n between times a and b, as cents (or null)
@@ -1225,7 +1247,10 @@ function snapT(t,skip,e){ if(free(e)) return {t,g:null}; let best=null,bd=SNAP_P
 function joined(n,side){ const edge=side==='start'?n.start:n.end; let best=null,bp=1e9;
   st.notes.forEach(o=>{ if(o===n) return; const v=side==='start'?o.end:o.start; if(Math.abs(v-edge)<=0.035){ const dp=Math.abs(o.pitch-n.pitch); if(dp<bp){bp=dp;best=o;} } });
   return best; }
-function updSel(){ const n=selSet.size||(st.notes[st.sel]?1:0); $('selBar').hidden=!n; if(n) $('selN').textContent=n===1?'1 note':`${n} notes`; }
+function updSel(){ const n=selSet.size||(st.notes[st.sel]?1:0); $('selBar').hidden=!n; if(n){ $('selN').textContent=n===1?'1 note':`${n} notes`; const g=selSet.size?[...selSet]:[st.notes[st.sel]]; if(document.activeElement!==$('selVel')) $('selVel').value=Math.round(g.reduce((a,o)=>a+(o.vel||90),0)/g.length); } }
+$('selVel').addEventListener('pointerdown',()=>pushUndo());
+$('selVel').addEventListener('input',()=>{ const g=selSet.size?[...selSet]:st.notes[st.sel]?[st.notes[st.sel]]:[]; g.forEach(o=>{ o.vel=+$('selVel').value; o.ed=1; }); st.edited=true; draw(); });
+$('selVel').addEventListener('change',()=>{ commit(); const g=selSet.size?[...selSet]:st.notes[st.sel]?[st.notes[st.sel]]:[]; if(g[0]) playOne(st.notes.indexOf(g[0])); });
 function deleteSelected(){ const g=selSet.size?[...selSet]:st.notes[st.sel]?[st.notes[st.sel]]:[]; if(!g.length) return; pushUndo(); const del=new Set(g);
   st.notes=st.notes.filter(n=>!del.has(n)); selSet=new Set(); st.sel=-1; commit(); toast(g.length===1?'Deleted 1 note (Undo brings it back)':`Deleted ${g.length} notes (Undo brings them back)`); }
 $('selDel').addEventListener('click',deleteSelected);
@@ -1295,7 +1320,7 @@ function zoom(f,cx,cy){ if(!G) return; const sc=$('sc'), r=sc.getBoundingClientR
 $('fsB').addEventListener('click',()=>{ if(document.fullscreenElement) document.exitFullscreen(); else $('roll').requestFullscreen().catch(()=>toast('Full screen is blocked here')); });
 document.addEventListener('fullscreenchange',()=>{ $('fsB').textContent=document.fullscreenElement?'✕':'⛶'; requestAnimationFrame(draw); });
 $('roll').addEventListener('wheel',e=>{ if(!(e.altKey||e.ctrlKey||e.metaKey)) return; e.preventDefault(); zoom(Math.exp(-clamp(e.deltaY,-120,120)*0.002),e.clientX,e.clientY); },{passive:false});
-document.addEventListener('keydown',e=>{
+document.addEventListener('keydown',e=>{ if(window.HN_block) return;
   const tag=(e.target.tagName||'').toLowerCase(); if(tag==='input'||tag==='textarea'||tag==='select') return;
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){ e.preventDefault(); doUndo(); return; }
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='c'&&st.notes[st.sel]){ if(getSelection().toString()) return; const c=cloneNote(st.notes[st.sel]); c.end-=c.start; c.start=0; clip=[c]; toast('Note copied — Ctrl+V drops it at the playhead'); return; }
@@ -1351,7 +1376,7 @@ $('file').addEventListener('change',async e=>{ const f=e.target.files[0]; if(!f)
 $('demo').addEventListener('click',()=>{ curName=null; curFile=null; showTakeBar(); run(demoBuffer(),true);
 setTimeout(()=>loadPiano().catch(()=>{}),1500); });
 $('play').addEventListener('click',togglePlay);
-$('play').addEventListener('keydown',e=>{ if(e.key===' ') e.preventDefault(); });
+$('play').addEventListener('keydown',e=>{ if(window.HN_block) return; if(e.key===' ') e.preventDefault(); });
 $('loopClr').addEventListener('click',()=>{ st.loop=null; showLoop(); clearSel(); });
 // ---- cut a stretch of time out of the take: the sound AND the notes go, and everything after slides earlier
 function cutRange(a,b){ if(!st.buf||st.demo||!(b>a)) return; stopPlay(); const d=b-a;
@@ -1840,7 +1865,7 @@ function guideFollow(r){ if(!r||!r.gd) return; const f=guideNote(r); if(!f||f===
   r.gd.o1.frequency.setTargetAtTime(f,t,0.03); r.gd.o2.frequency.setTargetAtTime(2*f,t,0.03); if(!r.gd.f) r.gd.g.gain.setTargetAtTime(0.16,t,0.08); r.gd.f=f; }
 function setGuide(on){ guideOn=on; $('tGuide').setAttribute('aria-pressed',String(on)); $('tGuide').textContent=on?'♪ Playing your note':'♪ Play my note'; if(rec){ if(on) guideStart(rec); else guideStop(rec); } }
 $('tGuide').addEventListener('click',()=>setGuide(!guideOn));
-document.addEventListener('keydown',e=>{ if(!rec||e.ctrlKey||e.metaKey||e.altKey) return; const tag=(e.target.tagName||'').toLowerCase(); if(tag==='input'||tag==='textarea'||tag==='select') return; if(e.key==='n'||e.key==='N'){ e.preventDefault(); setGuide(!guideOn); } });
+document.addEventListener('keydown',e=>{ if(window.HN_block) return; if(!rec||e.ctrlKey||e.metaKey||e.altKey) return; const tag=(e.target.tagName||'').toLowerCase(); if(tag==='input'||tag==='textarea'||tag==='select') return; if(e.key==='n'||e.key==='N'){ e.preventDefault(); setGuide(!guideOn); } });
 function tunerReset(){ buildArc(); $('tNote').textContent='–'; $('tHz').innerHTML='&nbsp;'; $('tCents').innerHTML='&nbsp;'; $('tPill').textContent='Sing a note';
   $('tuner').classList.remove('ok','near','far'); $('tn').classList.add('quiet'); $('tNeedle').setAttribute('transform',`rotate(0 ${T_CX} ${T_CY})`); tunerZone(null); }
 function tunerZone(z){ const on={tZok:z==='ok',tZnL:z==='near-',tZnR:z==='near+',tZfL:z==='far-',tZfR:z==='far+'}; for(const id in on) $(id).setAttribute('opacity',on[id]?'1':'0'); }
@@ -1902,7 +1927,7 @@ const LR={on:false,notes:[],cur:null,cand:null,quiet:0,lastDraw:0,trace:[]};
 // rumble or half the pitch — moved up an octave if that fits, otherwise ignored unless it lasts 0.3 s
 function rangeFix(S,x,t){ if(x==null||isNaN(x)) return x; if(S.cen!=null&&x<S.cen-8){ if(Math.abs(x+12-S.cen)<7) x+=12; else { if(S.lowT==null) S.lowT=t; if(t-S.lowT<0.3) return NaN; } } else S.lowT=null;
   S.cen=S.cen==null?x:S.cen+(x-S.cen)*Math.min(1,(S.dt||0.016)/3); return x; }
-function lrTick(r,now,dt){ const cvL=$('liveRoll');
+function lrTick(r,now,dt){ const cvL=LR.canvas||$('liveRoll');
   if(!r.recording){ if(LR.on){ LR.on=false; cvL.hidden=true; } return; }
   if(!LR.on){ Object.assign(LR,{on:true,notes:[],cur:null,cand:null,quiet:0,trace:[],cen:null,lowT:null}); cvL.hidden=false; }
   const t=(r.acc+(r.paused?0:now-r.since))/1000; if(r.paused) return;
@@ -1913,7 +1938,7 @@ function lrTick(r,now,dt){ const cvL=$('liveRoll');
     else if(!LR.cand||LR.cand.p!==p){ LR.cand={p,t0:t,n:1}; if(LR.cur) LR.cur.end=t; }
     else if(++LR.cand.n>=2+Math.round(3*sk)){ LR.cur={pitch:p,start:LR.cand.t0,end:t}; LR.notes.push(LR.cur); LR.cand=null; } }
   if(now-LR.lastDraw>33){ LR.lastDraw=now; lrDraw(t); } }
-function lrDraw(t){ const cvL=$('liveRoll'), W=cvL.parentElement.clientWidth, H=cvL.parentElement.clientHeight; if(!W) return;
+function lrDraw(t){ const cvL=LR.canvas||$('liveRoll'), W=cvL.parentElement.clientWidth, H=cvL.parentElement.clientHeight; if(!W) return;
   const c=sized(cvL,W,H), c0=colors(), SPAN=8, X=s=>W-12-(t-s)/SPAN*(W-56), top=26;
   const vis=LR.notes.filter(n=>n.end>t-SPAN), tr=LR.trace.filter(o=>o[0]>t-SPAN); while(LR.trace.length&&LR.trace[0][0]<t-SPAN-1) LR.trace.shift();
   const ps=vis.length?vis.map(n=>n.pitch):tr.slice(-20).map(o=>o[1]).sort((a,b)=>a-b).slice(5,-5); let lo=ps.length?Math.floor(Math.min(...ps))-3:52, hi=ps.length?Math.ceil(Math.max(...ps))+3:64; // sized by the notes, so a stray reading can't squash the view if(hi-lo<14){ const m=(hi+lo)/2; lo=Math.floor(m-7); hi=lo+14; }
@@ -2054,7 +2079,7 @@ $('metro').addEventListener('change',saveMet); $('metBpm').addEventListener('cha
 function clickAt(ctx,t,accent){ const o=ctx.createOscillator(), g=ctx.createGain(); o.type='sine'; o.frequency.value=accent?1760:1175;
   g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(accent?0.45:0.3,t+0.002); g.gain.exponentialRampToValueAtTime(0.001,t+0.06); o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t+0.08); }
 function startMetro(ctx,bpm){ const beat=60/bpm, M={bpm,beat,t0:ctx.currentTime+0.12,k:0}; M.next=M.t0;
-  const tick=()=>{ while(M.next<ctx.currentTime+0.2){ clickAt(ctx,M.next,M.k%4===0); M.next+=beat; M.k++; } }; tick(); M.iv=setInterval(tick,25); M.stop=()=>clearInterval(M.iv); return M; }
+  const tick=()=>{ while(M.next<ctx.currentTime+0.2){ if(!(window.HN_clickOff&&M.k>=4)) clickAt(ctx,M.next,M.k%4===0); M.next+=beat; M.k++; } }; tick(); M.iv=setInterval(tick,25); M.stop=()=>clearInterval(M.iv); return M; }
 // A live session = mic + tuner + click. "Listen" opens one without recording; Record records on top of it
 // (opening one first if needed). Stopping a recording keeps the session going if you opened it with Listen.
 // what went wrong opening the mic, in plain words
@@ -2126,7 +2151,7 @@ async function monitor(on){ if(!monOK) return; try{ const j=await (await fetch('
   $('hearS').textContent=j.on?`≈${j.delay_ms} ms`:''; if(on&&!j.on) toast('Could not open the headphones for “hear myself”'); }catch(e){} }
 $('hear').addEventListener('change',()=>{ try{ localStorage.setItem(HEAR_KEY,$('hear').checked?'1':'0'); }catch(e){} if(rec&&rec.recording) monitor($('hear').checked); });
 addEventListener('pagehide',()=>{ if(monOK) navigator.sendBeacon('api/monitor?on=0'); });
-async function stopRec(discard){ const r=rec; if(!r||!r.recording) return; r.recording=false; lvOff(); LR.on=false; $('liveRoll').hidden=true; clearInterval(r.iv); monitor(false); const met=r.met; if(met){ met.stop(); r.met=null; }
+async function stopRec(discard){ const r=rec; if(!r||!r.recording) return; r.recording=false; lvOff(); LR.on=false; $('liveRoll').hidden=true; if(LR.canvas) LR.canvas.hidden=false; clearInterval(r.iv); monitor(false); const met=r.met; if(met){ met.stop(); r.met=null; }
   $('rec').classList.remove('on'); $('recT').textContent='Record'; $('recPause').hidden=true; $('recCancel').hidden=true;
   if(!r.keep) closeLive(); else liveUI();
   if(discard){ r.chunks.length=0; $('status').textContent=r.replace?`Cancelled — ${r.replace.base} was kept as it was.`:'Recording cancelled — nothing was saved.'; showTakeBar(); return; }
@@ -2302,8 +2327,14 @@ $('wuPlay').addEventListener('click',()=>{ if(WU.S&&WU.S.scale) scPlay(); });
 $('wuSkip').addEventListener('click',()=>{ if(WU.on==='done'){ wuFinish(false); return; } wuFinish(WU.mode==='quick'); });
 $('wuAgain').addEventListener('click',()=>{ const m=WU.mode; wuFinish(false); setTimeout(()=>startWarmup(m),60); });
 $('wuB').addEventListener('click',()=>{ if(rec&&rec.recording) return; if(WU.on) wuFinish(false); setTimeout(()=>startWarmup('scale'),60); });
+// ---- bridge for the studio (studio.js): the guided song screens reuse everything above as it is
+window.HN={st,Hum,$,get rec(){ return rec; },openLive,closeLive,startRec,stopRec,run,redecode,analyze,toMono16k,render,draw,setPos,seek,stopPlay,startPlay,togglePlay,
+  tone,ac,loadPiano,pianoOn,pianoOff,playOne,playScale,rankKeys,keyName,keyPcs,setKey,get liveKey(){ return liveKey; },liveEngine,liveSync,get liveOK(){ return liveOK; },
+  startMetro,withMeter,wav,kv,writeFile,saveTake,midiBytes,demoBuffer,drawScore,pushUndo,commit,toast,LR,undo,showLoop,clearSel:()=>{ selSet=new Set(); },
+  get pb(){ return pb; },nowPos,get G(){ return G; },NOTE_W:()=>NOTE_W,micErr,showTiming,select};
 run(demoBuffer(),true);
 initFolder();
 }
 </script>
+<script src="studio.js"></script>
 </body></html>
