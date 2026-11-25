@@ -8,7 +8,8 @@ back to WASAPI. Every audio block (~3 ms):
   3. synth: a small built-in synth plays the note; how loud you start sets the velocity, and the vowel you sing
      (oo / ah / ee) opens or closes the tone filter. Your voice itself is never played back.
 """
-import math, threading, time
+import math, os, threading, time
+os.environ.setdefault("SD_ENABLE_ASIO", "1")  # lets PortAudio use the interface's ASIO driver (a few ms each way)
 
 try:
     import numpy as np
@@ -26,11 +27,13 @@ class Analyzer:
 
     def __init__(self, sr):
         self.sr = sr
-        self.W = int(sr * 0.021)                      # analysis window (~21 ms)
+        self.Wmax = int(sr * 0.021)                   # longest analysis window
+        self.W = int(sr * 0.014)                      # current window: ~2 cycles of the voice (shorter = quicker)
         self.tmin, self.tmax = int(sr / 1100), int(sr / 65)
-        self.buf = np.zeros(self.W + self.tmax + 8, np.float32)
-        n = self.W + self.tmax
-        self.N = 1 << (2 * n - 1).bit_length()
+        self.buf = np.zeros(self.Wmax + self.tmax + 8, np.float32)
+        self.hop = max(16, int(sr * 0.0015))          # a fresh reading every ~1.5 ms
+        self.acc = 0
+        self.choked = False
         self.allowed = set(range(12))
         self.stick = 0.5
         self.noise = 0.003
@@ -51,8 +54,9 @@ class Analyzer:
     def yin(self, x):
         W, tmax = self.W, self.tmax
         a = x[:W]
-        F = np.fft.rfft(x, self.N)
-        r = np.fft.irfft(np.conj(np.fft.rfft(a, self.N)) * F, self.N)[: tmax + 1]
+        N = 1 << (2 * (W + tmax) - 1).bit_length()
+        F = np.fft.rfft(x[: W + tmax], N)
+        r = np.fft.irfft(np.conj(np.fft.rfft(a, N)) * F, N)[: tmax + 1]
         cs = np.concatenate(([0.0], np.cumsum(x.astype(np.float64) ** 2)))
         e0 = cs[W]
         et = cs[np.arange(tmax + 1) + W] - cs[np.arange(tmax + 1)]
@@ -91,9 +95,13 @@ class Analyzer:
         n = len(x)
         self.buf = np.roll(self.buf, -n)
         self.buf[-n:] = x[-len(self.buf):] if n > len(self.buf) else x
-        dt = n / self.sr
-        self.t += dt
-        w = self.buf[-(self.W + self.tmax):][::-1].copy()  # newest samples first, so the reading reflects the latest ~21 ms
+        self.t += n / self.sr
+        self.acc += n
+        if self.acc < self.hop:
+            return []
+        dt = self.acc / self.sr
+        self.acc = 0
+        w = self.buf[-(self.W + self.tmax):][::-1].copy()  # newest samples first, so the reading reflects the latest audio
         cur = self.buf[-self.W:]
         rms = float(np.sqrt(np.mean(cur * cur)) + 1e-9)
         self.rms = rms
@@ -112,6 +120,7 @@ class Analyzer:
                 if k and abs(m - 12 * k - self.note) < 0.8:
                     m -= 12 * k
             self.midi = m
+            self.W = int(self.sr * min(0.021, max(0.007, 2.2 / f)))
             seg = self.hann * self.buf[-1024:]
             sp = np.abs(np.fft.rfft(seg)) ** 2
             lo, hi = sp[self.lo_band].sum(), sp[self.hi_band].sum()
@@ -136,14 +145,21 @@ class Analyzer:
                     self.dipped = False
                     self.peak = rms
                     ev.append(("on", self.note, self.vel(rms)))
+                away = abs(m - self.note)
+                if away > 0.55 + 0.4 * s and not self.choked:
+                    self.choked = True
+                    ev.append(("choke",))
+                elif away < 0.4 + 0.2 * s and self.choked:
+                    self.choked = False
+                    ev.append(("unchoke",))
                 if p != self.note:
-                    margin = abs(m - self.note) - abs(m - p)
-                    need = 0.1 + 0.5 * s
+                    margin = away - abs(m - p)
+                    need = 0.12 + 0.45 * s
                     if margin > need:
                         if self.cand and self.cand[0] == p:
-                            if self.t - self.cand[1] >= 0.003 + 0.03 * s:
+                            if self.t - self.cand[1] >= 0.036 * s:
                                 ev.append(("on", p, self.vel(rms)))
-                                self.note, self.cand, self.peak, self.dipped = p, None, rms, False
+                                self.note, self.cand, self.peak, self.dipped, self.choked = p, None, rms, False, False
                         else:
                             self.cand = (p, self.t)
                     else:
@@ -153,11 +169,12 @@ class Analyzer:
         else:
             self.midi = float("nan")
             self.cand = None
+            self.W = int(self.sr * 0.014)
             if self.note is not None:
                 self.quiet += dt
-                if self.quiet > 0.03 + 0.09 * s:
+                if self.quiet > 0.02 + 0.08 * s:
                     ev.append(("off",))
-                    self.note = None
+                    self.note, self.choked = None, False
         return ev
 
     @staticmethod
@@ -182,10 +199,11 @@ class Synth:
         self.zi = np.zeros(2)
         self.tone = 0.5
         self.vowel = True
+        self.choke = False
 
     def on(self, note, v):
         self.f = 440.0 * 2 ** ((note - 69) / 12)
-        self.v, self.gate, self.age = v, True, 0.0
+        self.v, self.gate, self.age, self.choke = v, True, 0.0, False
 
     def off(self):
         self.gate = False
@@ -194,7 +212,9 @@ class Synth:
         sr, f, snd = self.sr, self.f, self.snd
         t = self.age + np.arange(n) / sr
         # amplitude envelope
-        if self.gate:
+        if self.gate and self.choke:
+            a = self.amp * np.exp(-np.arange(1, n + 1) / (0.003 * sr))
+        elif self.gate:
             if snd == "pluck":
                 env = 0.25 + 0.75 * np.exp(-t / 0.35)
                 att = 0.002
@@ -264,6 +284,9 @@ class LiveEngine:
         self.lock = threading.Lock()
         self.last = {"note": None, "midi": None, "t": 0}
         self.log = []          # (time, event) for the tests
+        self.xruns = 0
+        self.dec = 1
+        self.fake = None
 
     def set(self, **p):
         self.params.update({k: v for k, v in p.items() if v is not None})
@@ -282,10 +305,20 @@ class LiveEngine:
 
     def _cb(self, indata, outdata, frames, t, status):
         x = indata.sum(axis=1).astype(np.float32)
+        if self.fake is not None:  # tests only: a synthetic voice instead of the mic
+            x = self.fake(len(x))
+        if self.dec == 2:  # 88.2/96 kHz: analyse at half the rate (plenty for a voice, half the work)
+            x = 0.5 * (x[0::2] + x[1::2])
+        if status:
+            self.xruns += 1
         for e in self.A.feed(x):
             if e[0] == "on":
                 self.S.on(e[1], e[2] if self.params["vel"] else 0.8)
                 self.last["note"] = e[1]
+            elif e[0] == "choke":
+                self.S.choke = True
+            elif e[0] == "unchoke":
+                self.S.choke = False
             else:
                 self.S.off()
                 self.last["note"] = None
@@ -298,20 +331,34 @@ class LiveEngine:
         if self.stream or not self.ok:
             return self.status()
         apis = sd.query_hostapis()
+        win_sr = None
+        for h in apis:
+            if "WASAPI" in h["name"] and h["default_input_device"] >= 0:
+                win_sr = int(sd.query_devices(h["default_input_device"])["default_samplerate"])
         tries = []
+        for h in apis:   # the interface's ASIO driver: ~4 ms in + 4 ms out
+            if h["name"] == "ASIO":
+                for d in h["devices"]:
+                    dd = sd.query_devices(d)
+                    if dd["max_input_channels"] > 0 and dd["max_output_channels"] > 0:
+                        tries.append((d, d, "ASIO", win_sr or int(dd["default_samplerate"]), 32, 0.001))
         for word, label in (("WDM-KS", "direct"), ("WASAPI", "shared")):
             for h in apis:
                 if word in h["name"] and h["default_input_device"] >= 0 and h["default_output_device"] >= 0:
-                    tries.append((h["default_input_device"], h["default_output_device"], label))
-        for di, do, label in tries:
+                    tries.append((h["default_input_device"], h["default_output_device"], label, None, 0, 0.003))
+        for di, do, label, sr0, bs, lat in tries:
             try:
                 ind, outd = sd.query_devices(di), sd.query_devices(do)
-                sr = int(outd["default_samplerate"])
-                self.A, self.S = Analyzer(sr), Synth(sr)
+                sr = sr0 or int(outd["default_samplerate"])
+                self.dec = 2 if sr >= 88200 else 1
+                if label == "ASIO" and self.dec == 2:
+                    bs = 64
+                self.A, self.S = Analyzer(sr // self.dec), Synth(sr)
                 self._apply()
+                self.xruns = 0
                 s = sd.Stream(device=(di, do), samplerate=sr,
                               channels=(min(2, ind["max_input_channels"]), min(2, outd["max_output_channels"])),
-                              dtype="float32", latency=0.003, blocksize=0, callback=self._cb)
+                              dtype="float32", latency=lat, blocksize=bs, callback=self._cb)
                 s.start()
                 self.stream, self.mode = s, label
                 break
@@ -330,7 +377,7 @@ class LiveEngine:
 
     def status(self):
         d = round(sum(self.stream.latency) * 1000) if self.stream else None
-        return {"available": self.ok, "on": bool(self.stream), "delay_ms": d, "mode": self.mode if self.stream else "",
+        return {"available": self.ok, "on": bool(self.stream), "delay_ms": d, "mode": self.mode if self.stream else "", "xruns": self.xruns,
                 "note": self.last["note"], "midi": self.last["midi"], **{k: self.params[k] for k in ("stick", "snd", "vel", "vowel", "vol")}}
 
 

@@ -5,6 +5,7 @@ takes straight into the recordings folder, so nothing goes to Downloads and Chro
 remember the microphone permission for this address.
 """
 import json, os, re, sys
+os.environ.setdefault("SD_ENABLE_ASIO", "1")  # must be set before sounddevice is first imported
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
