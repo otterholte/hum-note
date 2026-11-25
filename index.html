@@ -227,6 +227,8 @@ button.q,label.q{background:transparent;border-color:transparent}button.q:hover,
   <details class="menu liveMenu" id="liveMenu"><summary class="q" title="Hear the notes you sing, live, as an instrument (use headphones)">🎹 Live notes</summary><div class="menuBody">
     <div class="mrow"><label class="hearL"><input type="checkbox" id="liveN"> Play the notes I sing, live (your voice isn't played)</label></div>
     <div class="mrow"><span class="status" id="liveS"></span></div>
+    <div class="mrow" id="liveInRow" hidden><span class="status">Hearing: <b id="liveIn"></b></span><div class="meter" style="flex:1;min-width:80px"><i id="liveLvl"></i></div></div>
+    <div class="mrow" id="liveWarn" hidden><span class="status" style="color:#c0392b">Live notes listen to the interface above, but ⚙ Setup records from a different microphone. Sing into the interface’s mic, or pick it in Setup.</span></div>
     <div class="mrow"><label for="liveSnd">Sound</label><select id="liveSnd"><option value="pluck">Pluck (snappiest)</option><option value="keys">Keys</option><option value="bass">Bass</option><option value="lead">Lead</option><option value="pad">Soft pad</option></select></div>
     <div class="mrow"><label for="liveStick">Stickiness</label><input type="range" id="liveStick" min="0" max="100" step="5" value="50"><span class="status" id="liveStickS"></span></div>
     <div class="mrow"><label class="hearL"><input type="checkbox" id="liveVel" checked> Velocity: sing louder, it plays harder</label></div>
@@ -1847,8 +1849,15 @@ function liveEngine(on){ liveP=liveP.then(()=>liveEngine1(on)); return liveP; }
 async function liveEngine1(on){ if(!liveOK) return; const S=liveSet(), q=new URLSearchParams({snd:S.snd,stick:S.stick,vel:S.vel?1:0,vowel:S.vowel?1:0,vol:S.vol,key:keyPcs(liveKey).join(',')});
   if(on!=null) q.set('on',on?1:0);
   try{ const j=await (await fetch('api/live?'+q,{method:'POST'})).json(); liveOn=!!j.on;
+    liveMeter(j.on);
     $('liveS').textContent=j.on?`Playing from the Humnote app's own audio engine (${j.mode==='ASIO'?'ASIO driver':'Windows shared audio — slower; ASIO wasn’t available'}, sound card ≈${j.delay_ms} ms)`:liveStatusIdle();
     if(on&&!j.on) toast('Couldn’t open the sound card for live notes'); }catch(e){} }
+// while live notes run: which input the engine hears, how loud, and a warning if Setup's mic is a different device
+let liveMT=0; function liveMeter(on){ clearInterval(liveMT); $('liveInRow').hidden=!on; $('liveWarn').hidden=true; if(!on) return;
+  liveMT=setInterval(async()=>{ if(!liveOn){ clearInterval(liveMT); return; } try{ const j=await (await fetch('api/live',{cache:'no-store'})).json(); if(!j.on) return;
+    $('liveIn').textContent=j.input||'?'; $('liveLvl').style.width=Math.min(100,j.level*600)+'%';
+    const tr=rec&&rec.stream&&rec.stream.getAudioTracks()[0], lab=(tr&&tr.label||'').toLowerCase(), word=(j.input||'').toLowerCase().split(/[\s(]/)[0];
+    $('liveWarn').hidden=!(lab&&word&&!lab.includes(word)); }catch(e){} },250); }
 const liveStatusIdle=()=>liveOK?'Runs in the Humnote app’s own audio engine while you listen or record.':'Runs in the page (slower). Open the Humnote Windows app for the fast engine.';
 // live notes run while the mic is open for listening or recording (not during the warm-up or key finding)
 const liveWanted=r=>!!(r&&(r.recording||r.keep)&&$('liveN').checked&&!WU.on&&!KF.on);

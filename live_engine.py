@@ -34,6 +34,13 @@ class Analyzer:
         self.hop = max(16, int(sr * 0.0015))          # a fresh reading every ~1.5 ms
         self.acc = 0
         self.choked = False
+        self.choke_t = 0.0
+        self.hist = []            # (t, pitch) of the last 0.4 s of voice, for the octave check
+        self.oct_t = None
+        self.recent = []
+        self.head_t = None
+        self.on_t = 0.0
+        self.dip_t = 0.0
         self.allowed = set(range(12))
         self.stick = 0.5
         self.noise = 0.003
@@ -74,6 +81,11 @@ class Analyzer:
                 i += 1
         else:
             i = int(np.argmin(seg)) + lo
+        h = int(round(i / 2))
+        if h >= self.tmin:
+            j = max(self.tmin, h - 2) + int(np.argmin(cm[max(self.tmin, h - 2): h + 3]))
+            if cm[j] < 0.2 or cm[j] < 1.3 * cm[i]:
+                i = j
         ap = float(cm[i])
         if 1 <= i < tmax:
             s0, s1, s2 = cm[i - 1], cm[i], cm[i + 1]
@@ -114,13 +126,35 @@ class Analyzer:
         s = self.stick
         if voiced:
             m = 69 + 12 * math.log2(f / 440.0)
-            # octave slip guard: a sudden exact-octave jump from the note being held is almost always the tracker
-            if self.note is not None:
-                k = round((m - self.note) / 12)
-                if k and abs(m - 12 * k - self.note) < 0.8:
-                    m -= 12 * k
+            # octave slip guard: a sudden jump of about an octave from where the voice has just been is almost always
+            # the tracker (a short window can lock onto half or double the pitch, e.g. vocal fry at a phrase end).
+            # A drop of an octave must last 150 ms to be believed, a rise 80 ms.
+            ref = self.note
+            if ref is None and len(self.hist) >= 5 and self.t - self.hist[-1][0] < 0.3:
+                ref = float(np.median([h[1] for h in self.hist]))
+            if ref is not None:
+                k = round((m - ref) / 12)
+                if k and abs(m - 12 * k - ref) < 2.6:
+                    if self.oct_t is None:
+                        self.oct_t = self.t
+                    if self.t - self.oct_t < (0.15 if k < 0 else 0.08):
+                        m -= 12 * k
+                else:
+                    self.oct_t = None
+            self.hist.append((self.t, m))
+            while self.hist and self.t - self.hist[0][0] > 0.4:
+                self.hist.pop(0)
+            # steady = not mid-scoop: the pitch has stayed within ~1/3 semitone for a moment (4 ms at the
+            # lowest stickiness, up to 20 ms at the highest, so a slide into a note doesn't play the note it slid from)
+            self.recent.append((self.t, m))
+            span = 0.004 + 0.016 * s
+            while self.recent and self.t - self.recent[0][0] > span + 0.002:
+                self.recent.pop(0)
+            vals = [v for _, v in self.recent]
+            steady = self.t - self.recent[0][0] >= span - 0.0015 and max(vals) - min(vals) < 0.35
             self.midi = m
-            self.W = int(self.sr * min(0.021, max(0.007, 2.2 / f)))
+            fc = 440.0 * 2 ** ((m - 69) / 12)   # size the next window from the corrected pitch, not a slip
+            self.W = int(self.sr * min(0.021, max(0.007, 2.2 / fc)))
             seg = self.hann * self.buf[-1024:]
             sp = np.abs(np.fft.rfft(seg)) ** 2
             lo, hi = sp[self.lo_band].sum(), sp[self.hi_band].sum()
@@ -131,35 +165,47 @@ class Analyzer:
             p = self.snap(m)
             if self.note is None:
                 if self.cand and self.cand[0] == p:
-                    if self.t - self.cand[1] >= 0.004:
+                    if self.t - self.cand[1] >= 0.004 and steady:
                         ev.append(("on", p, self.vel(rms)))
-                        self.note, self.cand, self.peak, self.dipped = p, None, rms, False
+                        self.note, self.cand, self.peak, self.dipped, self.on_t = p, None, rms, False, self.t
                 else:
                     self.cand = (p, self.t)
             else:
                 self.peak = max(self.peak, rms)
                 # the same note sung again (a new syllable): the voice dips, then comes back up
-                if rms < 0.35 * self.peak:
-                    self.dipped = True
+                if rms < 0.3 * self.peak:
+                    if not self.dipped:
+                        self.dipped, self.dip_t = True, self.t
                 elif self.dipped and rms > 0.6 * self.peak:
                     self.dipped = False
-                    self.peak = rms
-                    ev.append(("on", self.note, self.vel(rms)))
+                    if self.t - self.dip_t >= 0.025 and self.t - self.on_t >= 0.12:
+                        self.peak, self.on_t = rms, self.t
+                        ev.append(("on", self.note, self.vel(rms)))
                 away = abs(m - self.note)
-                if away > 0.55 + 0.4 * s and not self.choked:
-                    self.choked = True
-                    ev.append(("choke",))
-                elif away < 0.4 + 0.2 * s and self.choked:
+                heading = p != self.note and away - abs(m - p) > 0.05   # the voice is moving toward another note
+                # choke: silence the old note only while the voice is clearly on its way to a DIFFERENT note,
+                # and never for long: after ~40 ms the new note simply plays
+                if heading and away > 0.6 + 0.4 * s:
+                    if self.head_t is None:
+                        self.head_t = self.t
+                    if not self.choked and self.t - self.head_t >= 0.008 + 0.012 * s:  # sure it's a move, not a wobble
+                        self.choked, self.choke_t = True, self.t
+                        ev.append(("choke",))
+                elif self.choked or self.head_t is not None:
+                    self.head_t = None
+                if not (heading and away > 0.6 + 0.4 * s) and self.choked:
                     self.choked = False
                     ev.append(("unchoke",))
+                held = self.t - self.on_t
                 if p != self.note:
                     margin = away - abs(m - p)
                     need = 0.12 + 0.45 * s
-                    if margin > need:
+                    force = self.choked and self.t - self.choke_t > 0.04
+                    if margin > need or force:
                         if self.cand and self.cand[0] == p:
-                            if self.t - self.cand[1] >= 0.036 * s:
+                            if force or (steady and self.t - self.cand[1] >= 0.036 * s and held >= 0.03 + 0.05 * s):
                                 ev.append(("on", p, self.vel(rms)))
-                                self.note, self.cand, self.peak, self.dipped, self.choked = p, None, rms, False, False
+                                self.note, self.cand, self.peak, self.dipped, self.choked, self.on_t = p, None, rms, False, False, self.t
                         else:
                             self.cand = (p, self.t)
                     else:
@@ -170,6 +216,7 @@ class Analyzer:
             self.midi = float("nan")
             self.cand = None
             self.W = int(self.sr * 0.014)
+            self.recent = []
             if self.note is not None:
                 self.quiet += dt
                 if self.quiet > 0.02 + 0.08 * s:
@@ -395,6 +442,7 @@ class LiveEngine:
                               dtype="float32", latency=lat, blocksize=bs, callback=self._cb)
                 s.start()
                 self.stream, self.mode = s, label
+                self.inname = ind["name"]
                 break
             except Exception as e:
                 self.error = f"{label}: {e}"
@@ -412,7 +460,8 @@ class LiveEngine:
 
     def status(self):
         d = round(sum(self.stream.latency) * 1000) if self.stream else None
-        return {"available": self.ok, "on": bool(self.stream), "delay_ms": d, "mode": self.mode if self.stream else "", "xruns": self.xruns, "error": getattr(self, "error", ""),
+        return {"available": self.ok, "on": bool(self.stream), "delay_ms": d, "mode": self.mode if self.stream else "", "xruns": self.xruns,
+                "input": getattr(self, "inname", "") if self.stream else "", "level": round(float(self.A.rms), 4) if (self.stream and self.A) else 0, "error": getattr(self, "error", ""),
                 "note": self.last["note"], "midi": self.last["midi"], **{k: self.params[k] for k in ("stick", "snd", "vel", "vowel", "vol")}}
 
 
