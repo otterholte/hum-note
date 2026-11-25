@@ -183,6 +183,7 @@ button.q,label.q{background:transparent;border-color:transparent}button.q:hover,
 .mrow{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.mrow>label:not(.hearL){font-weight:600;font-size:14px;min-width:8em}.menuBody .micRow{margin:0}
 #midiL{display:inline-flex;align-items:center;gap:8px}
 .recBar{margin-bottom:10px}
+.roll #liveRoll{position:absolute;inset:0;z-index:6;background:var(--panel)}
 .liveMenu .menuBody{left:0;right:auto}.liveMenu input[type=range]{flex:1;min-width:120px}
 .keyPanel{border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:12px 14px;margin:-2px 0 12px;display:flex;flex-direction:column;gap:10px}
 .keyPanel p{margin:0}.keyPanel .kRow{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.keyPanel .kBig{font-size:18px}
@@ -280,6 +281,7 @@ button.q,label.q{background:transparent;border-color:transparent}button.q:hover,
     </div></details>
   </div>
   <div class="roll" id="roll">
+    <canvas id="liveRoll" hidden aria-label="Notes appearing live as you record"></canvas>
     <button type="button" class="fsB" id="fsB" title="Full screen (Esc to leave)">⛶</button>
     <div class="selBar" id="selBar" hidden><span id="selN"></span><button type="button" id="selDel">🗑 Delete</button><button type="button" id="selNone" aria-label="Unselect">✕</button></div>
     <div class="keys"><canvas id="kc"></canvas></div>
@@ -295,7 +297,7 @@ button.q,label.q{background:transparent;border-color:transparent}button.q:hover,
   <button id="undoB" type="button" class="q" hidden>↶ Undo</button>
   <button id="loopClr" type="button" class="q" hidden>✕ Clear loop</button>
   <button id="cutB" type="button" class="q" hidden title="Removes this part of your recording and its notes; everything after moves earlier">✂ Cut this part out</button>
-  <span class="facts"><span title="Key it heard"><b id="fKey">—</b></span><span title="Your tuning vs. A440"><b id="fTune">—</b> <i id="fTuneS" hidden></i></span><span><b id="fCount">—</b> <i id="fCountS">notes</i></span></span>
+  <span class="facts"><span title="Key it heard"><b id="fKey">—</b></span><span title="Your tuning vs. A440"><b id="fTune">—</b> <i id="fTuneS" hidden></i></span><span><b id="fCount">—</b> <i id="fCountS">notes</i></span><span id="fOut" hidden title="Notes outside the key are drawn blue. Often a slip (a scoop, a wrong start) — check them."><b style="color:var(--acc2)">●</b> <i id="fOutS"></i></span></span>
 </div>
 
 <div class="card edit">
@@ -802,9 +804,11 @@ const Hum = (() => {
           p.b=found.a; out2.push({...p,a:found.a,b:found.b,pitch:pick(mv),cut:0,orn:1}); q.a=found.b; }
         fin=out2; }
       // k) a wrong start fixed straight away: a quick note (0.16 s or less) a semitone off, flowing with no new
-      //    syllable into the note the voice then settles on, after a jump of 2+ semitones — it is one note, the second
+      //    syllable into the note the voice then settles on, after a jump of 2+ semitones — it is one note, the second.
+      //    An out-of-key quick note a semitone from an in-key one is merged even when a new syllable starts on it.
       { const out2=[]; for(let k=0;k<fin.length;k++){ const o=fin[k], p=out2[out2.length-1], pp=out2[out2.length-2], nx=fin[k+1];
-          if(p&&!o.cut&&!o.orn&&Math.abs(o.pitch-p.pitch)===1&&o.a-p.b<=3&&(p.b-p.a)*F.dt<=HP.wsL&&(o.b-p.a)*F.dt<=0.4&&(!pp||p.a-pp.b>3||Math.abs(p.pitch-pp.pitch)>=2)&&!(nx&&nx.pitch===p.pitch&&nx.a-o.b<=3)){
+          const oddStart=key&&!ok(p&&p.pitch)&&ok(o.pitch);
+          if(p&&(!o.cut||oddStart)&&!o.orn&&Math.abs(o.pitch-p.pitch)===1&&o.a-p.b<=3&&(p.b-p.a)*F.dt<=HP.wsL&&((o.b-p.a)*F.dt<=0.4||oddStart)&&(!pp||p.a-pp.b>3||Math.abs(p.pitch-pp.pitch)>=2)&&!(nx&&nx.pitch===p.pitch&&nx.a-o.b<=3)){
             let gv=true; for(let i=p.b;i<o.a;i++) if(!voiced[i]) gv=false;
             if(gv){ p.b=o.b; p.pitch=o.pitch; p.orn=0; continue; } }
           out2.push(o); } fin=out2; }
@@ -1126,6 +1130,7 @@ function render(){
   const c0=Math.round(100*tune.curve[0]), c1=Math.round(100*tune.curve[tune.curve.length-1]);
   $('fTune').textContent=(c0>0?'+':c0<0?'−':'')+Math.abs(c0)+'¢';
   $('fTuneS').textContent=Math.abs(c1-c0)>=8?`Your tuning vs. A440 at the start; drifted ${c1<c0?'flatter':'sharper'} by ${Math.abs(c1-c0)}¢, followed`:'Your tuning vs. A440, allowed for';
+  { const ik=new Set(st.res&&st.res.key?st.res.key.scale:[]), out=ik.size?n.filter(o=>!ik.has(o.pitch%12)).length:0; $('fOut').hidden=!out; $('fOutS').textContent=out===1?'1 note not in the key (blue)':`${out} notes not in the key (blue)`; }
   $('fCount').textContent=n.length; $('fCountS').textContent=n.length?`notes, ${Hum.flatName(Math.min(...n.map(o=>o.pitch))+st.tr)}–${Hum.flatName(Math.max(...n.map(o=>o.pitch))+st.tr)}`:'notes';
   const inKey=new Set(key?key.scale:[]);
   $('notes').innerHTML=n.map((o,i)=>`<li><button type="button" data-i="${i}" class="${inKey.size&&!inKey.has(o.pitch%12)?'out':''}${i===st.sel?' sel':''}">${Hum.flatName(o.pitch+st.tr)}${o.vib&&!o.vibOff&&st.vib==='keep'?' 〰':''}${o.ed?' ✎':''} <small>${o.ed?'edited':(o.rel>0?'+':o.rel<0?'−':'±')+Math.abs(o.rel)+'¢'}</small></button></li>`).join('');
@@ -1227,6 +1232,8 @@ $('selDel').addEventListener('click',deleteSelected);
 $('selNone').addEventListener('click',()=>{ selSet=new Set(); if(st.loop){ st.loop=null; showLoop(); } select(-1); });
 const cv=$('cv');
 const HOLD_MS=380, PAN_PX=9;
+// how far you must drag on empty space before it becomes a loop: one beat of the take, and never less than 60 px
+const loopMinPx=()=>Math.max(60,(st.tempo&&st.tempo.beat?st.tempo.beat:0.5)*NOTE_W);
 cv.addEventListener('pointerdown',e=>{ if(!G||e.button!==0) return; const h=hit(e), on=noteAt(h); cv.setPointerCapture(e.pointerId);
   if(e.pointerType==='touch'){ const sc=$('sc'); // decide on a swipe (scroll), a tap, or a press-and-hold (select / move)
     drag={mode:'pending',h0:h,on,x0:e.clientX,y0:e.clientY,ly:e.clientY,sl0:sc.scrollLeft,moved:false};
@@ -1244,7 +1251,7 @@ cv.addEventListener('pointermove',e=>{
   if(drag){ drag.cx=e.clientX; drag.cy=e.clientY; drag.shift=e.shiftKey; } dragMove(e); });
 function dragMove(e){ if(!G) return; const h=hit(e);
   if(!drag){ const on=noteAt(h); cv.style.cursor=on.i<0?(h.y<RULER?'col-resize':'crosshair'):e.shiftKey?'copy':on.part==='body'?'move':'ew-resize'; return; }
-  if(drag.mode==='time'){ if(Math.abs(h.x-drag.h0.x)<6&&!drag.moved) return; drag.moved=true; const a=Math.max(0,Math.min(drag.h0.t,h.t)), b=Math.min(G.dur,Math.max(drag.h0.t,h.t)); st.loop=[a,b]; showLoop(); selectRange(a,b); return; }
+  if(drag.mode==='time'){ if(!drag.moved&&Math.abs(h.x-drag.h0.x)<loopMinPx()) return; drag.moved=true; const a=Math.max(0,Math.min(drag.h0.t,h.t)), b=Math.min(G.dur,Math.max(drag.h0.t,h.t)); st.loop=[a,b]; showLoop(); selectRange(a,b); return; }
   if(drag.mode==='group'){ if(!drag.moved&&Math.hypot(h.x-drag.h0.x,h.y-drag.h0.y)<4) return;
     if(!drag.moved){ pushUndo(); drag.moved=true; if(drag.copy){ const cl=drag.origs.map(o=>{ const c=cloneNote(o.n); st.notes.push(c); return {...o,n:c}; }); drag.origs=cl; selSet=new Set(cl.map(o=>o.n)); } }
     const s0=Math.min(...drag.origs.map(o=>o.s)), e0=Math.max(...drag.origs.map(o=>o.e)); let dt=(h.x-drag.h0.x)/NOTE_W; const dp=Math.round((drag.h0.y-h.y)/G.rowH);
@@ -1271,7 +1278,7 @@ cv.addEventListener('pointerup',e=>{ const d=drag; drag=null; st.guide=null; if(
   if(d.mode==='pan') return;
   if(d.mode==='pending'){ if(d.on.i>=0){ if(!selSet.has(st.notes[d.on.i])) clearSel(); select(d.on.i); playOne(d.on.i); } else { clearSel(); select(-1); seek(d.h0.t); } return; }
   if(d.mode==='group'){ if(d.moved) commit(); return; }
-  if(d.mode==='time'){ if(!d.moved){ clearSel(); seek(d.h0.t); } else { if(st.loop[1]-st.loop[0]<0.08){ st.loop=null; showLoop(); clearSel(); seek(d.h0.t); } else { setPos(st.loop[0]); if(pb) startPlay(st.loop[0]); } } return; }
+  if(d.mode==='time'){ if(!d.moved){ clearSel(); select(-1); if(st.loop&&(d.h0.t<st.loop[0]||d.h0.t>st.loop[1])){ st.loop=null; showLoop(); } seek(d.h0.t); } else { if(st.loop[1]-st.loop[0]<0.08){ st.loop=null; showLoop(); clearSel(); select(-1); seek(d.h0.t); } else { setPos(st.loop[0]); if(pb) startPlay(st.loop[0]); } } return; }
   if(d.moved) commit(); else playOne(st.notes.indexOf(d.n)); });
 cv.addEventListener('pointercancel',()=>{ if(drag){ cancelAnimationFrame(drag.raf); clearTimeout(drag.timer); } drag=null; st.guide=null; draw(); });
 // double-click empty space: add a note; if another note is sounding at that moment, line up with it (harmony)
@@ -1888,6 +1895,35 @@ function lvTick(r,m,now,dt){ liveSync(); if(liveOK||!liveWanted(r)||r.paused){ i
   if(++LV.cand.n>=2+Math.round(2*sk)){ if(LV.node) lvOff(); lvOn(p); LV.p=p; LV.cand=null; } }
 $('liveN').addEventListener('change',()=>{ try{ localStorage.setItem(LIVE_KEY,$('liveN').checked?'1':'0'); }catch(e){}
   if($('liveN').checked&&$('hear').checked){ $('hear').checked=false; $('hear').dispatchEvent(new Event('change')); } liveSync(); });
+// ---- notes appear on the roll while you record: the note you're singing, snapped to the key, with the same
+// stickiness as the live notes. A quick sketch; the full transcription replaces it when you press Stop.
+const LR={on:false,notes:[],cur:null,cand:null,quiet:0,lastDraw:0,trace:[]};
+function lrTick(r,now,dt){ const cvL=$('liveRoll');
+  if(!r.recording){ if(LR.on){ LR.on=false; cvL.hidden=true; } return; }
+  if(!LR.on){ Object.assign(LR,{on:true,notes:[],cur:null,cand:null,quiet:0,trace:[]}); cvL.hidden=false; }
+  const t=(r.acc+(r.paused?0:now-r.since))/1000; if(r.paused) return;
+  const sk=+$('liveStick').value/100, x=r.mRaw;
+  if(x==null||isNaN(x)){ LR.quiet+=dt; LR.cand=null; if(LR.quiet>0.06+0.08*sk) LR.cur=null; }
+  else { LR.quiet=0; LR.trace.push([t,x]); const p=lvSnap(x);
+    if(LR.cur&&(p===LR.cur.pitch||Math.abs(x-LR.cur.pitch)-Math.abs(x-p)<0.1+0.5*sk)){ LR.cur.end=t; LR.cand=null; }
+    else if(!LR.cand||LR.cand.p!==p){ LR.cand={p,t0:t,n:1}; if(LR.cur) LR.cur.end=t; }
+    else if(++LR.cand.n>=2+Math.round(3*sk)){ LR.cur={pitch:p,start:LR.cand.t0,end:t}; LR.notes.push(LR.cur); LR.cand=null; } }
+  if(now-LR.lastDraw>33){ LR.lastDraw=now; lrDraw(t); } }
+function lrDraw(t){ const cvL=$('liveRoll'), W=cvL.parentElement.clientWidth, H=cvL.parentElement.clientHeight; if(!W) return;
+  const c=sized(cvL,W,H), c0=colors(), SPAN=8, X=s=>W-12-(t-s)/SPAN*(W-56), top=26;
+  const vis=LR.notes.filter(n=>n.end>t-SPAN), tr=LR.trace.filter(o=>o[0]>t-SPAN); while(LR.trace.length&&LR.trace[0][0]<t-SPAN-1) LR.trace.shift();
+  const ps=vis.length?vis.map(n=>n.pitch):tr.slice(-20).map(o=>o[1]).sort((a,b)=>a-b).slice(5,-5); let lo=ps.length?Math.floor(Math.min(...ps))-3:52, hi=ps.length?Math.ceil(Math.max(...ps))+3:64; // sized by the notes, so a stray reading can't squash the view if(hi-lo<14){ const m=(hi+lo)/2; lo=Math.floor(m-7); hi=lo+14; }
+  const rowH=(H-top)/(hi-lo+1), Y=p=>top+(hi-p)*rowH;
+  c.fillStyle=c0.panel; c.fillRect(0,0,W,H);
+  for(let p=lo;p<=hi;p++){ const black=[1,3,6,8,10].includes(((p%12)+12)%12); c.fillStyle=black?c0.row:c0.panel; c.fillRect(0,Y(p),W,rowH); c.fillStyle=c0.line; c.fillRect(0,Y(p)+rowH-1,W,1);
+    if(rowH>=11||p%12===0){ c.fillStyle=p%12===0?c0.ink:c0.mute; c.font='500 11px Inter,sans-serif'; c.textBaseline='middle'; c.fillText(Hum.flatName(p+st.tr),6,Y(p)+rowH/2); } }
+  const ik=new Set(keyPcs(liveKey));
+  vis.forEach(n=>{ const x0=Math.max(44,X(n.start)), x1=X(n.end); if(x1<=44) return; c.fillStyle=liveKey&&!ik.has(n.pitch%12)?c0.acc2:c0.acc;
+    c.beginPath(); c.roundRect?c.roundRect(x0,Y(n.pitch)+1,Math.max(4,x1-x0),rowH-2,4):c.rect(x0,Y(n.pitch)+1,Math.max(4,x1-x0),rowH-2); c.fill();
+    if(x1-x0>30&&rowH>=13){ c.fillStyle='#fff'; c.font='600 11px Inter,sans-serif'; c.fillText(Hum.flatName(n.pitch+st.tr),x0+5,Y(n.pitch)+rowH/2); } });
+  c.strokeStyle=c0.voice; c.lineWidth=1.5; c.beginPath(); let on=false, prev=null; tr.forEach(([s,v])=>{ if(v<lo-0.5||v>hi+0.5){ on=false; prev=null; return; } const xx=X(s), yy=Y(v)+rowH/2; if(prev!=null&&s-prev>0.08) on=false; if(on) c.lineTo(xx,yy); else { c.moveTo(xx,yy); on=true; } prev=s; }); c.stroke();
+  c.fillStyle=c0.acc; c.fillRect(W-12,top,2,H-top);
+  c.fillStyle=c0.mute; c.font='600 12px Inter,sans-serif'; c.textBaseline='middle'; c.fillText(`● Recording ${Math.floor(t/60)}:${String(Math.floor(t%60)).padStart(2,'0')} — notes appear as you sing${liveKey?' (in '+keyName(liveKey)+')':''}. The full transcription follows when you press Stop.`,50,13); }
 function tunerLoop(){ if(!rec) return; const r=rec, now=performance.now(), dt=Math.min(0.1,(now-(r.tPrev||now))/1000); r.tPrev=now;
   const tu=$('tuner'), tn=$('tn');
   if(r.paused){ tn.classList.add('quiet'); tu.classList.add('quiet'); r.raf=requestAnimationFrame(tunerLoop); return; }
@@ -1910,11 +1946,18 @@ function tunerLoop(){ if(!rec) return; const r=rec, now=performance.now(), dt=Ma
   r.hist.push({t:now,m:isNaN(m)?NaN:r.me,c:isNaN(m)?NaN:Math.max(-60,Math.min(60,100*((r.mt-r.off)-Math.round(r.me-r.off))))}); while(r.hist.length&&now-r.hist[0].t>5000) r.hist.shift();
   if(!isNaN(m)){ const xr=m-r.off, p=Math.round(xr);
     if(r.disp==null) r.disp=p;
-    else if(p!==r.disp&&Math.abs(xr-r.disp)>0.6){ if(!r.cand||r.cand.p!==p) r.cand={p,since:now}; else if(now-r.cand.since>tsm().nm){ r.disp=p; r.cand=null; r.cz=null; r.me=r.mf; } }
+    else if(p!==r.disp&&Math.abs(xr-r.disp)>0.6){ if(!r.cand||r.cand.p!==p) r.cand={p,since:now}; else if(now-r.cand.since>tsm().nm){ r.disp=p; r.cand=null; r.cz=null; r.me=r.mf; r.nv=[]; r.setT=null; } }
     else if(p===r.disp) r.cand=null;
     if(r.shown!==r.disp){ r.shown=r.disp; const nm=Hum.flatName(r.disp), mm=nm.match(/^(.*?)(-?\d+)$/); $('tNote').innerHTML=`${mm[1]}<sub>${mm[2]}</sub>`; }
-    const target=Math.max(-50,Math.min(50,100*(r.me-r.off-r.disp)));
-    if(steady&&Math.abs(target)<50){ r.cz=r.cz==null?target:r.cz+(target-r.cz)*(1-Math.exp(-dt/tsm().cz)); }
+    // needle: quick but not jumpy. At the start of a note it waits until the voice has held within 30 cents for
+    // ~80 ms (so a scoop into the note doesn't fling it sharp or flat), then jumps straight there; after that it
+    // shows the average of the last ~0.18 s (one vibrato wobble, so vibrato evens out) and follows it within ~60 ms.
+    const cNow=100*(m-r.off-r.disp); if(!r.nv) r.nv=[]; r.nv.push({t:now,c:cNow}); while(r.nv.length&&now-r.nv[0].t>400) r.nv.shift();
+    const last=r.nv.filter(o=>now-o.t<=80); let lo=1e9,hi=-1e9; last.forEach(o=>{ lo=Math.min(lo,o.c); hi=Math.max(hi,o.c); });
+    const full=last.length>=3&&now-last[0].t>=60;
+    if(r.setT==null){ if(full&&hi-lo<30) r.setT=now-80; } else if(full&&hi-lo>70){ r.setT=null; }
+    if(r.setT!=null){ const w=r.nv.filter(o=>o.t>=Math.max(now-180,r.setT)); const est=w.reduce((a,o)=>a+o.c,0)/w.length;
+      if(Math.abs(est)<50) r.cz=r.cz==null?est:r.cz+(est-r.cz)*(1-Math.exp(-dt/0.06)); }
     if(r.cz!=null){ $('tNeedle').setAttribute('transform',`rotate(${(r.cz*T_DEG).toFixed(2)} ${T_CX} ${T_CY})`);
       if(now-(r.tTxt||0)>300){ r.tTxt=now; const cr=Math.round(r.cz); $('tCents').textContent=(cr>0?'+':cr<0?'−':'')+Math.abs(cr)+'¢'; $('tHz').textContent=(440*2**((r.me-69)/12)).toFixed(1)+' Hz'; }
       // label with a little patience, so it doesn't flicker
@@ -1926,10 +1969,11 @@ function tunerLoop(){ if(!rec) return; const r=rec, now=performance.now(), dt=Ma
         $('tPill').textContent={ok:'✓ In tune','near+':'▲ A little sharp','near-':'▼ A little flat','far+':'▲ Sharp','far-':'▼ Flat'}[zone];
         tunerZone(zone); } } else r.zc=null; }
     tn.classList.remove('quiet'); tu.classList.remove('quiet'); }
-  else if(now-(r.lastV||0)>350){ tn.classList.add('quiet'); tu.classList.add('quiet'); }
+  else { if(now-(r.lastV||0)>150){ r.nv=[]; r.setT=null; } if(now-(r.lastV||0)>350){ tn.classList.add('quiet'); tu.classList.add('quiet'); } }
   if(guideOn){ if(!r.gd) guideStart(r); guideFollow(r); }
   if(WU.on===true) wuTick(r,m,steady,now,dt);
   lvTick(r,m,now,dt);
+  lrTick(r,now,dt);
   drawTrace(r); r.raf=requestAnimationFrame(tunerLoop); }
 // a calm glowing wave that swells with how loud the mic is, just to show it hears you (flat when silent)
 function drawTrace(r){ if(st.trace==='on'){ drawPitchTrace(r); return; } drawWave(r); }
@@ -2078,7 +2122,7 @@ async function monitor(on){ if(!monOK) return; try{ const j=await (await fetch('
   $('hearS').textContent=j.on?`≈${j.delay_ms} ms`:''; if(on&&!j.on) toast('Could not open the headphones for “hear myself”'); }catch(e){} }
 $('hear').addEventListener('change',()=>{ try{ localStorage.setItem(HEAR_KEY,$('hear').checked?'1':'0'); }catch(e){} if(rec&&rec.recording) monitor($('hear').checked); });
 addEventListener('pagehide',()=>{ if(monOK) navigator.sendBeacon('api/monitor?on=0'); });
-async function stopRec(discard){ const r=rec; if(!r||!r.recording) return; r.recording=false; lvOff(); clearInterval(r.iv); monitor(false); const met=r.met; if(met){ met.stop(); r.met=null; }
+async function stopRec(discard){ const r=rec; if(!r||!r.recording) return; r.recording=false; lvOff(); LR.on=false; $('liveRoll').hidden=true; clearInterval(r.iv); monitor(false); const met=r.met; if(met){ met.stop(); r.met=null; }
   $('rec').classList.remove('on'); $('recT').textContent='Record'; $('recPause').hidden=true; $('recCancel').hidden=true;
   if(!r.keep) closeLive(); else liveUI();
   if(discard){ r.chunks.length=0; $('status').textContent=r.replace?`Cancelled — ${r.replace.base} was kept as it was.`:'Recording cancelled — nothing was saved.'; showTakeBar(); return; }
