@@ -182,7 +182,11 @@ button.q,label.q{background:transparent;border-color:transparent}button.q:hover,
 .menuBody{position:absolute;right:0;top:calc(100% + 6px);z-index:30;width:min(460px,92vw);background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;box-shadow:0 14px 40px rgba(0,0,0,.2);display:flex;flex-direction:column;gap:12px}
 .mrow{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.mrow>label:not(.hearL){font-weight:600;font-size:14px;min-width:8em}.menuBody .micRow{margin:0}
 #midiL{display:inline-flex;align-items:center;gap:8px}
-.recBar{margin-bottom:10px}.recBar .file{margin-left:auto;color:var(--mute)}
+.recBar{margin-bottom:10px}
+.liveMenu .menuBody{left:0;right:auto}.liveMenu input[type=range]{flex:1;min-width:120px}
+.keyPanel{border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:12px 14px;margin:-2px 0 12px;display:flex;flex-direction:column;gap:10px}
+.keyPanel p{margin:0}.keyPanel .kRow{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.keyPanel .kBig{font-size:18px}
+.keyPanel button.on{outline:2px solid var(--accent,#ff5a1f)}.recBar .file{margin-left:auto;color:var(--mute)}
 .card{border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:2px 14px;margin:12px 0}
 .more{margin-left:auto}.more>summary{list-style:none;display:inline-flex;align-items:center;min-height:36px;padding:0 12px;border-radius:10px;cursor:pointer;font-weight:600;font-size:14px;color:var(--mute)}.more>summary::-webkit-details-marker{display:none}
 .more[open]{flex-basis:100%;margin-left:0}.moreBody{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;padding:8px 0 2px}
@@ -219,12 +223,26 @@ button.q,label.q{background:transparent;border-color:transparent}button.q:hover,
   <button id="rec" type="button" class="recbtn"><span class="dot"></span><span id="recT">Record</span></button>
   <button id="listen" type="button" title="Tuner and click on, without recording — find your note first">🎧 Listen</button>
   <button id="wuB" type="button" class="q" title="Sing C, D, E, D, C, holding each for 2 seconds, to check you are on key">Warm up</button>
-  <label class="hearL" id="liveL" title="While recording, hear the notes Humnote hears you sing, played as notes instead of your voice (use headphones)"><input type="checkbox" id="liveN"> Hear notes live</label>
+  <button id="keyB" type="button" class="q" title="Pick the key, or sing a riff and Humnote guesses it. Live notes then only play notes in that key.">Key: any</button>
+  <details class="menu liveMenu" id="liveMenu"><summary class="q" title="Hear the notes you sing, live, as an instrument (use headphones)">🎹 Live notes</summary><div class="menuBody">
+    <div class="mrow"><label class="hearL"><input type="checkbox" id="liveN"> Play the notes I sing, live (your voice isn't played)</label></div>
+    <div class="mrow"><span class="status" id="liveS"></span></div>
+    <div class="mrow"><label for="liveSnd">Sound</label><select id="liveSnd"><option value="pluck">Pluck (snappiest)</option><option value="keys">Keys</option><option value="bass">Bass</option><option value="lead">Lead</option><option value="pad">Soft pad</option></select></div>
+    <div class="mrow"><label for="liveStick">Stickiness</label><input type="range" id="liveStick" min="0" max="100" step="5" value="50"><span class="status" id="liveStickS"></span></div>
+    <div class="mrow"><label class="hearL"><input type="checkbox" id="liveVel" checked> Velocity: sing louder, it plays harder</label></div>
+    <div class="mrow"><label class="hearL"><input type="checkbox" id="liveVow" checked> Vowels shape the tone: “oo” darker, “ah” open, “ee” brighter</label></div>
+    <div class="mrow"><label for="liveVol">Volume</label><input type="range" id="liveVol" min="0" max="150" step="5" value="80"></div>
+  </div></details>
   <button id="recPause" type="button" hidden>❚❚ Pause</button>
   <button id="recCancel" type="button" hidden>✕ Cancel</button>
   <label class="hearL" id="metL" title="A click in your headphones while you listen and record; the take then uses this exact tempo"><input type="checkbox" id="metro"> Click <input type="number" id="metBpm" min="40" max="240" step="1" value="100" aria-label="Click tempo in BPM"> BPM</label>
   <label class="file q" id="fileLbl"><input type="file" id="file" accept="audio/*,video/*,.m4a,.mp3,.wav,.ogg,.aac,.3gp,.webm">Open a recording…</label>
   <span class="status" id="status"></span>
+</div>
+<div class="keyPanel" id="keyPanel" hidden aria-live="polite">
+  <div class="kRow"><b>Key</b><select id="keySel" aria-label="Key"></select><button type="button" id="keyFind" class="primary">🎤 Sing a riff to find my key</button><button type="button" id="keyClose" class="q">Close</button></div>
+  <p class="status" id="keyMsg">Live notes only play notes that belong to the key. “Any note” plays every semitone.</p>
+  <div class="kRow" id="keyRes" hidden></div>
 </div>
 <div class="load takebar" id="takeBar" hidden>
   <span class="status">Take: <b id="takeName"></b></span>
@@ -1817,7 +1835,29 @@ function tunerReset(){ buildArc(); $('tNote').textContent='–'; $('tHz').innerH
 function tunerZone(z){ const on={tZok:z==='ok',tZnL:z==='near-',tZnR:z==='near+',tZfL:z==='far-',tZfR:z==='far+'}; for(const id in on) $(id).setAttribute('opacity',on[id]?'1':'0'); }
 // ---- hear notes live: while recording, the note you're singing plays as a note (your voice is not played back).
 // A note starts once the voice has held the same semitone for ~60 ms, changes after ~70 ms on a new one, stops after ~120 ms of silence.
-const LIVE_KEY='hum2midi_liveN'; try{ $('liveN').checked=localStorage.getItem(LIVE_KEY)!=='0'; }catch(e){ $('liveN').checked=true; }
+const LIVE_KEY='hum2midi_liveN', LIVESET_KEY='hum2midi_liveSet', LKEY_KEY='hum2midi_liveKey';
+try{ $('liveN').checked=localStorage.getItem(LIVE_KEY)!=='0'; }catch(e){ $('liveN').checked=true; }
+try{ const o=JSON.parse(localStorage.getItem(LIVESET_KEY)||'{}'); if(o.snd) $('liveSnd').value=o.snd; if(o.stick!=null) $('liveStick').value=o.stick; if(o.vel!=null) $('liveVel').checked=o.vel; if(o.vowel!=null) $('liveVow').checked=o.vowel; if(o.vol!=null) $('liveVol').value=o.vol; }catch(e){}
+let liveKey=null; try{ liveKey=JSON.parse(localStorage.getItem(LKEY_KEY)||'null'); }catch(e){}
+const KEY_NAMES=['C','Db','D','Eb','E','F','F#','G','Ab','A','Bb','B'], keyName=k=>k?KEY_NAMES[k.tonic]+(k.mode==='minor'?' minor':' major'):'Any note';
+const keyPcs=k=>k?(k.mode==='minor'?[0,2,3,5,7,8,10]:[0,2,4,5,7,9,11]).map(i=>(i+k.tonic)%12):[0,1,2,3,4,5,6,7,8,9,10,11];
+const liveSet=()=>({snd:$('liveSnd').value,stick:+$('liveStick').value/100,vel:$('liveVel').checked,vowel:$('liveVow').checked,vol:+$('liveVol').value/100});
+let liveOK=false, liveOn=false;
+async function liveEngine(on){ if(!liveOK) return; const S=liveSet(), q=new URLSearchParams({snd:S.snd,stick:S.stick,vel:S.vel?1:0,vowel:S.vowel?1:0,vol:S.vol,key:keyPcs(liveKey).join(',')});
+  if(on!=null) q.set('on',on?1:0);
+  try{ const j=await (await fetch('api/live?'+q,{method:'POST'})).json(); liveOn=!!j.on;
+    $('liveS').textContent=j.on?`Playing from the Humnote app's own audio engine (${j.mode==='direct'?'direct Windows audio':'Windows audio'}, sound card ≈${j.delay_ms} ms)`:liveStatusIdle();
+    if(on&&!j.on) toast('Couldn’t open the sound card for live notes'); }catch(e){} }
+const liveStatusIdle=()=>liveOK?'Runs in the Humnote app’s own audio engine while you listen or record.':'Runs in the page (slower). Open the Humnote Windows app for the fast engine.';
+// live notes run while the mic is open for listening or recording (not during the warm-up or key finding)
+const liveWanted=r=>!!(r&&(r.recording||r.keep)&&$('liveN').checked&&!WU.on&&!KF.on);
+function liveSync(){ const want=liveWanted(rec); if(liveOK){ if(want!==liveOn) liveEngine(want); } }
+const saveLive=()=>{ try{ localStorage.setItem(LIVESET_KEY,JSON.stringify({snd:$('liveSnd').value,stick:+$('liveStick').value,vel:$('liveVel').checked,vowel:$('liveVow').checked,vol:+$('liveVol').value})); }catch(e){} };
+const stickTxt=()=>{ const v=+$('liveStick').value; $('liveStickS').textContent=v<25?'jumps to new notes fast':v<70?'balanced':'holds notes, ignores wobbles'; };
+['liveSnd','liveStick','liveVel','liveVow','liveVol'].forEach(id=>$(id).addEventListener('change',()=>{ saveLive(); stickTxt(); if(liveOK) liveEngine(null); }));
+$('liveStick').addEventListener('input',stickTxt); stickTxt();
+serverReady.then(async ok=>{ if(!ok) return; try{ const j=await (await fetch('api/live',{cache:'no-store'})).json(); liveOK=!!j.available; }catch(e){} $('liveS').textContent=liveStatusIdle(); });
+$('liveS').textContent=liveStatusIdle();
 const LV={p:null,cand:null,since:0,quiet:0,node:null};
 function lvOn(p){ const ctx=ac(); if(!['keys','flute'].includes(st.snd)){ pianoOn(p,80); LV.node={piano:p}; return; }
   const t=ctx.currentTime, f=440*2**((p-69)/12), g=ctx.createGain(), lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=Math.min(8000,f*6);
@@ -1826,15 +1866,16 @@ function lvOn(p){ const ctx=ac(); if(!['keys','flute'].includes(st.snd)){ pianoO
   o1.start(t); o2.start(t); LV.node={g,os:[o1,o2]}; }
 function lvOff(){ const N=LV.node; LV.node=null; LV.p=null; if(!N) return; if(N.piano!=null){ pianoOff(N.piano,true); return; }
   const t=ac().currentTime; N.g.gain.cancelScheduledValues(t); N.g.gain.setTargetAtTime(0,t,0.04); N.os.forEach(o=>{ try{ o.stop(t+0.3); }catch(e){} }); }
-function lvTick(r,m,now,dt){ if(!(r.recording&&!r.paused&&$('liveN').checked)){ if(LV.node) lvOff(); LV.cand=null; return; }
-  const x=r.mRaw; if(x==null||isNaN(x)){ LV.quiet+=dt; LV.cand=null; if(LV.quiet>0.08&&LV.node) lvOff(); return; }
+function lvSnap(x){ const pcs=keyPcs(liveKey); let best=Math.round(x),bd=99; for(let q=Math.floor(x)-3;q<=Math.ceil(x)+3;q++) if(pcs.includes(((q%12)+12)%12)&&Math.abs(x-q)<bd){ bd=Math.abs(x-q); best=q; } return best; }
+function lvTick(r,m,now,dt){ liveSync(); if(liveOK||!liveWanted(r)||r.paused){ if(LV.node) lvOff(); LV.cand=null; return; }
+  const sk=+$('liveStick').value/100, x=r.mRaw; if(x==null||isNaN(x)){ LV.quiet+=dt; LV.cand=null; if(LV.quiet>0.04+0.09*sk&&LV.node) lvOff(); return; }
   if(x===LV.lastX) return; LV.lastX=x; // only count new readings
-  LV.quiet=0; const p=Math.round(x);
-  if(LV.p!=null&&(p===LV.p||Math.abs(x-LV.p)<0.6)){ LV.cand=null; return; }
+  LV.quiet=0; const p=lvSnap(x);
+  if(LV.p!=null&&(p===LV.p||Math.abs(x-LV.p)-Math.abs(x-p)<0.1+0.5*sk)){ LV.cand=null; return; }
   if(!LV.cand||LV.cand.p!==p){ LV.cand={p,n:1}; return; }
-  if(++LV.cand.n>=2){ if(LV.node) lvOff(); lvOn(p); LV.p=p; LV.cand=null; } }
+  if(++LV.cand.n>=2+Math.round(2*sk)){ if(LV.node) lvOff(); lvOn(p); LV.p=p; LV.cand=null; } }
 $('liveN').addEventListener('change',()=>{ try{ localStorage.setItem(LIVE_KEY,$('liveN').checked?'1':'0'); }catch(e){}
-  if($('liveN').checked&&$('hear').checked){ $('hear').checked=false; $('hear').dispatchEvent(new Event('change')); } });
+  if($('liveN').checked&&$('hear').checked){ $('hear').checked=false; $('hear').dispatchEvent(new Event('change')); } liveSync(); });
 function tunerLoop(){ if(!rec) return; const r=rec, now=performance.now(), dt=Math.min(0.1,(now-(r.tPrev||now))/1000); r.tPrev=now;
   const tu=$('tuner'), tn=$('tn');
   if(r.paused){ tn.classList.add('quiet'); tu.classList.add('quiet'); r.raf=requestAnimationFrame(tunerLoop); return; }
@@ -1969,7 +2010,7 @@ async function openLive(keep){ if(rec) return rec; stopPlay(); micTest(false); c
   rec=R; swiftStart(); $('tuner').hidden=false; R.raf=requestAnimationFrame(tunerLoop);
   if($('metro').checked) R.met=startMetro(ctx,Math.max(40,Math.min(240,+$('metBpm').value||100)));
   liveUI(); return R; }
-function closeLive(){ const r=rec; if(!r) return; rec=null; lvOff(); monitor(false); guideStop(r); if(r.met) r.met.stop(); clearInterval(r.iv); cancelAnimationFrame(r.raf);
+function closeLive(){ const r=rec; if(!r) return; rec=null; lvOff(); if(liveOn) liveEngine(false); monitor(false); guideStop(r); if(r.met) r.met.stop(); clearInterval(r.iv); cancelAnimationFrame(r.raf);
   try{ r.proc.disconnect(); r.src.disconnect(); r.mute.disconnect(); }catch(e){} r.stream.getTracks().forEach(t=>t.stop()); $('tuner').hidden=true; liveUI(); micTest(true); }
 function liveUI(){ const L=$('listen'), on=!!rec, recing=!!(rec&&rec.recording); L.classList.toggle('on',on&&!recing); L.textContent=on&&!recing?'■ Stop listening':'🎧 Listen'; L.disabled=recing; }
 $('listen').addEventListener('click',async()=>{ if(rec){ if(!rec.recording) closeLive(); return; } try{ await openLive(true); $('status').textContent='Listening — find your note, then press Record.'; }catch(e){ toast('Microphone blocked — allow it and try again'); } });
@@ -2036,6 +2077,57 @@ async function stopRec(discard){ const r=rec; if(!r||!r.recording) return; r.rec
     try{ if(r.replace.file&&r.replace.file!==base+'.wav') await removeFiles(base,r.replace.file); await removeFiles(base,base+'.mid').catch(()=>{}); }catch(e){}
     listTakes(); toast(`Recorded over ${base} — the old version is gone`); }
   else await saveTake(wav(buf),'wav'); }
+// ===== key: pick it, or sing a riff and Humnote guesses =====
+// The guess weighs how long each note is held, the notes the voice jumps to and from (big leaps usually land on the
+// home note or its 5th), and the note the riff ends on; ties go to plain major / minor keys with fewer sharps and flats.
+const KF={on:false,guesses:[]};
+const KK_MAJ=[6.35,2.23,3.48,2.33,4.38,4.09,2.52,5.19,2.39,3.66,2.29,2.88], KK_MIN=[6.33,2.68,3.52,5.38,2.60,3.53,2.54,4.75,3.98,2.69,3.34,3.17];
+const ACC_MAJ=[0,5,2,3,4,1,6,1,4,3,2,5]; // sharps/flats in each major key (C, Db, D, ...)
+const KEY_W={cov:2.4,last:0,first:0.09,long:0.03,acc:0.09,maj:0.075,leap:1.2,lastDur:0.03}; // fitted on 315 folk tunes + well-known tunes (tools: keysearch)
+function rankKeys(notes,W){ W={...KEY_W,...(W||{})}; const N=notes.filter(n=>n.end-n.start>=0.08); if(N.length<3) return [];
+  const h=new Array(12).fill(0); N.forEach(n=>h[n.pitch%12]+=Math.sqrt(n.end-n.start));
+  for(let i=1;i<N.length;i++){ const d=Math.abs(N[i].pitch-N[i-1].pitch); if(d>=5&&d<=12){ h[N[i].pitch%12]+=W.leap*Math.sqrt(N[i].end-N[i].start); h[N[i-1].pitch%12]+=0.5*W.leap*Math.sqrt(N[i-1].end-N[i-1].start); } }
+  const tot=h.reduce((a,b)=>a+b,0), corr=(a,b)=>{ const ma=a.reduce((x,y)=>x+y)/12, mb=b.reduce((x,y)=>x+y)/12; let n=0,da=0,db=0; for(let i=0;i<12;i++){ n+=(a[i]-ma)*(b[i]-mb); da+=(a[i]-ma)**2; db+=(b[i]-mb)**2; } return n/Math.sqrt(da*db||1); };
+  const lastLen=N[N.length-1].end-N[N.length-1].start, last=N[N.length-1].pitch%12, first=N[0].pitch%12, longest=[...N].sort((a,b)=>(b.end-b.start)-(a.end-a.start))[0].pitch%12, out=[];
+  for(let t=0;t<12;t++) for(const mode of ['major','minor']){ const P=mode==='major'?KK_MAJ:KK_MIN, pcs=keyPcs({tonic:t,mode});
+    let cov=0; pcs.forEach(q=>cov+=h[q]); cov/=tot||1;
+    const acc=ACC_MAJ[mode==='major'?t:(t+3)%12];
+    const r=corr(h,P.map((_,i)=>P[(i-t+12)%12]))+W.cov*(cov-1)+(last===t?W.last+W.lastDur*Math.min(1,lastLen):0)+(first===t||first===(t+7)%12?W.first:0)+(longest===t?W.long:0)-W.acc*acc+(mode==='major'?W.maj:0);
+    out.push({tonic:t,mode,r}); }
+  out.sort((a,b)=>b.r-a.r); return out; }
+function keyUI(){ $('keyB').textContent='Key: '+keyName(liveKey); const sel=$('keySel'); sel.value=liveKey?liveKey.tonic+':'+liveKey.mode:''; }
+(function(){ const sel=$('keySel'); let h='<option value="">Any note (no key)</option>'; for(const mode of ['major','minor']) for(let t=0;t<12;t++) h+=`<option value="${t}:${mode}">${keyName({tonic:t,mode})}</option>`; sel.innerHTML=h; keyUI(); })();
+function setKey(k){ liveKey=k; try{ localStorage.setItem(LKEY_KEY,JSON.stringify(k)); }catch(e){} keyUI(); if(liveOK&&liveOn) liveEngine(null); }
+$('keySel').addEventListener('change',()=>{ const v=$('keySel').value; if(!v){ setKey(null); return; } const [t,m]=v.split(':'); setKey({tonic:+t,mode:m}); playScale(liveKey,KF.mid); });
+$('keyB').addEventListener('click',()=>{ $('keyPanel').hidden=!$('keyPanel').hidden; });
+$('keyClose').addEventListener('click',()=>{ if(KF.on) kfStop(true); $('keyPanel').hidden=true; });
+// play the key's scale up and back down, near where the voice sang
+let scaleT=[]; function playScale(k,mid){ scaleT.forEach(clearTimeout); scaleT=[]; if(!k) return; const deg=keyPcs({tonic:0,mode:k.mode}); const base=k.tonic+12*Math.round(((mid||57)-5-k.tonic)/12);
+  const seq=[...deg.map(d=>base+d),base+12,...deg.slice().reverse().map(d=>base+d)]; seq.forEach((p,i)=>{ scaleT.push(setTimeout(()=>{ pianoOn(p,80); scaleT.push(setTimeout(()=>pianoOff(p,true),230)); },i*240)); }); }
+async function kfStart(){ if(KF.on) return; try{ const had=!!rec; const R=rec||await openLive(false); if(!had) R.keep=false; KF.on=true; KF.R=R; R.wuCap=[]; liveSync();
+    $('keyFind').textContent='■ Done'; $('keyRes').hidden=true; $('keyMsg').textContent='Listening… sing a riff or a bit of your song (5–10 seconds), then press Done.';
+    KF.to=setTimeout(()=>kfStop(false),12000);
+  }catch(e){ toast('Microphone blocked: allow it and try again'); KF.on=false; } }
+async function kfStop(cancel){ if(!KF.on) return; clearTimeout(KF.to); KF.on=false; const R=KF.R, ch=R.wuCap||[]; R.wuCap=null; $('keyFind').textContent='🎤 Sing a riff to find my key';
+  if(R&&!R.keep&&!R.recording) closeLive(); else liveSync(); if(cancel) return;
+  const n=ch.reduce((s2,c)=>s2+c.length,0); if(n<R.sr*1.5){ $('keyMsg').textContent='That was too short. Sing a little longer (5–10 seconds).'; return; }
+  $('keyMsg').textContent='Working out the key…';
+  try{ const buf=ac().createBuffer(1,n,R.sr), d=buf.getChannelData(0); let o=0; ch.forEach(c=>{ d.set(c,o); o+=c.length; });
+    const x=await toMono16k(buf), F=await analyze(x,16000), notes=Hum.decode(F,Hum.tuningCurve(F),null,{});
+    const G=rankKeys(notes); if(!G.length){ $('keyMsg').textContent='I couldn’t hear enough notes. Try again, a bit louder or longer.'; return; }
+    const ps=notes.map(n=>n.pitch).sort((a,b)=>a-b); KF.mid=ps[ps.length>>1]; KF.guesses=G.slice(0,3);
+    const top=G[0], sure=G[0].r-G[1].r;
+    $('keyMsg').innerHTML=`<span class="kBig">We think you’re in <b>${keyName(top)}</b>. Does that sound right?</span> ${sure<0.03?'(close call — listen to the other guesses too)':''}`;
+    const R2=$('keyRes'); R2.hidden=false;
+    R2.innerHTML=`<button type="button" class="primary" data-k="0">✓ Yes, use ${keyName(top)}</button><button type="button" data-hear="0">▶ Hear the scale</button><span class="status">Other guesses:</span>`+G.slice(1,3).map((g,i)=>`<button type="button" data-hear="${i+1}">${keyName(g)}</button>`).join('');
+    setKey(top); playScale(top,KF.mid);
+  }catch(e){ $('keyMsg').textContent='Something went wrong listening to that. Try again.'; } }
+$('keyFind').addEventListener('click',()=>{ if(KF.on) kfStop(false); else kfStart(); });
+$('keyRes').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return;
+  if(b.dataset.k!=null){ setKey(KF.guesses[+b.dataset.k]); $('keyPanel').hidden=true; toast('Live notes now stay in '+keyName(liveKey)); return; }
+  const g=KF.guesses[+b.dataset.hear]; if(!g) return; setKey(g); playScale(g,KF.mid);
+  [...$('keyRes').querySelectorAll('[data-hear]')].forEach(x=>x.classList.toggle('on',x===b));
+  const y=$('keyRes').querySelector('[data-k]'); y.dataset.k=String(+b.dataset.hear); y.textContent='✓ Yes, use '+keyName(g); });
 // ===== voice warm-up =====
 // First take: about 15 s. Hold a comfortable note in tune, then your lowest and highest comfortable notes, then
 // "da da da da" back on the first note. Later takes: a quick 2-note check (skippable). Humnote then knows

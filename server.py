@@ -71,6 +71,7 @@ class Monitor:
 
 
 MON = Monitor()
+from live_engine import LIVE  # noqa: E402  (native live notes)
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -105,6 +106,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json({"ok": True})
         if u.path == "/api/monitor":
             return self._json(MON.status())
+        if u.path == "/api/live":
+            return self._json(LIVE.status())
         if u.path == "/api/takes":
             os.makedirs(REC, exist_ok=True)
             items = sorted((f for f in os.listdir(REC) if AUDIO.search(f)), reverse=True)
@@ -120,6 +123,23 @@ class Handler(SimpleHTTPRequestHandler):
             if "on" in q:
                 return self._json(MON.start() if q["on"][0] == "1" else MON.stop())
             return self._json(MON.status())
+        if u.path == "/api/live" and self._local_only():
+            # live notes: ?on=1|0  &snd=pluck|keys|bass|lead|pad  &stick=0..1  &vel=1|0  &vowel=1|0  &vol=0..1.5  &key=0,2,4,... (allowed pitch classes)
+            q = {k: v[0] for k, v in parse_qs(u.query).items()}
+            p = {}
+            if "snd" in q: p["snd"] = q["snd"]
+            if "stick" in q: p["stick"] = max(0.0, min(1.0, float(q["stick"])))
+            if "vel" in q: p["vel"] = q["vel"] == "1"
+            if "vowel" in q: p["vowel"] = q["vowel"] == "1"
+            if "vol" in q: p["vol"] = max(0.0, min(1.5, float(q["vol"])))
+            if "key" in q: p["allowed"] = [int(x) % 12 for x in q["key"].split(",") if x.strip().lstrip("-").isdigit()] or list(range(12))
+            LIVE.set(**p)
+            if "on" in q:
+                if q["on"] == "1":
+                    MON.stop()
+                    return self._json(LIVE.start())
+                return self._json(LIVE.stop())
+            return self._json(LIVE.status())
         if u.path == "/api/delete" and self._local_only():
             # delete one take file (name=) or every file of one take (base=), only inside recordings
             q = parse_qs(u.query)

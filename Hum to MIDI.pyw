@@ -52,6 +52,7 @@ def main():
     p.wait()
     if srv:
         server.MON.stop()
+        server.LIVE.stop()
         srv.shutdown()
 
 
