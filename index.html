@@ -1842,11 +1842,12 @@ let liveKey=null; try{ liveKey=JSON.parse(localStorage.getItem(LKEY_KEY)||'null'
 const KEY_NAMES=['C','Db','D','Eb','E','F','F#','G','Ab','A','Bb','B'], keyName=k=>k?KEY_NAMES[k.tonic]+(k.mode==='minor'?' minor':' major'):'Any note';
 const keyPcs=k=>k?(k.mode==='minor'?[0,2,3,5,7,8,10]:[0,2,4,5,7,9,11]).map(i=>(i+k.tonic)%12):[0,1,2,3,4,5,6,7,8,9,10,11];
 const liveSet=()=>({snd:$('liveSnd').value,stick:+$('liveStick').value/100,vel:$('liveVel').checked,vowel:$('liveVow').checked,vol:+$('liveVol').value/100});
-let liveOK=false, liveOn=false;
-async function liveEngine(on){ if(!liveOK) return; const S=liveSet(), q=new URLSearchParams({snd:S.snd,stick:S.stick,vel:S.vel?1:0,vowel:S.vowel?1:0,vol:S.vol,key:keyPcs(liveKey).join(',')});
+let liveOK=false, liveOn=false, liveP=Promise.resolve();
+function liveEngine(on){ liveP=liveP.then(()=>liveEngine1(on)); return liveP; }
+async function liveEngine1(on){ if(!liveOK) return; const S=liveSet(), q=new URLSearchParams({snd:S.snd,stick:S.stick,vel:S.vel?1:0,vowel:S.vowel?1:0,vol:S.vol,key:keyPcs(liveKey).join(',')});
   if(on!=null) q.set('on',on?1:0);
   try{ const j=await (await fetch('api/live?'+q,{method:'POST'})).json(); liveOn=!!j.on;
-    $('liveS').textContent=j.on?`Playing from the Humnote app's own audio engine (${j.mode==='ASIO'?'ASIO driver':j.mode==='direct'?'direct Windows audio':'Windows audio'}, sound card ≈${j.delay_ms} ms)`:liveStatusIdle();
+    $('liveS').textContent=j.on?`Playing from the Humnote app's own audio engine (${j.mode==='ASIO'?'ASIO driver':'Windows shared audio — slower; ASIO wasn’t available'}, sound card ≈${j.delay_ms} ms)`:liveStatusIdle();
     if(on&&!j.on) toast('Couldn’t open the sound card for live notes'); }catch(e){} }
 const liveStatusIdle=()=>liveOK?'Runs in the Humnote app’s own audio engine while you listen or record.':'Runs in the page (slower). Open the Humnote Windows app for the fast engine.';
 // live notes run while the mic is open for listening or recording (not during the warm-up or key finding)
@@ -1997,7 +1998,10 @@ function startMetro(ctx,bpm){ const beat=60/bpm, M={bpm,beat,t0:ctx.currentTime+
   const tick=()=>{ while(M.next<ctx.currentTime+0.2){ clickAt(ctx,M.next,M.k%4===0); M.next+=beat; M.k++; } }; tick(); M.iv=setInterval(tick,25); M.stop=()=>clearInterval(M.iv); return M; }
 // A live session = mic + tuner + click. "Listen" opens one without recording; Record records on top of it
 // (opening one first if needed). Stopping a recording keeps the session going if you opened it with Listen.
-async function openLive(keep){ if(rec) return rec; stopPlay(); micTest(false); const ctx=ac(); const stream=await navigator.mediaDevices.getUserMedia({audio:micConstraints()});
+// what went wrong opening the mic, in plain words
+const micErr=e=>e&&e.name==='NotReadableError'?'The microphone is busy: another program is using it. Close that program, then try again.':e&&(e.name==='NotFoundError'||e.name==='OverconstrainedError')?'That microphone is not connected — pick another one in Setup':'Microphone access is off — allow it for Humnote, then try again';
+async function openLive(keep){ if(rec) return rec; stopPlay(); micTest(false); const ctx=ac(); await liveP; // let the live engine finish letting go of the sound card first
+  const stream=await navigator.mediaDevices.getUserMedia({audio:micConstraints()});
   const src=ctx.createMediaStreamSource(stream), proc=ctx.createScriptProcessor(512,1,1), mute=ctx.createGain(); mute.gain.value=0;
   const ring=new Float32Array(ctx.sampleRate);
   const R={stream,src,proc,mute,chunks:[],ring,w:0,sr:ctx.sampleRate,hist:[],last:[],noise:0.01,off:0,me:null,disp:null,shown:null,good:false,raf:0,iv:0,paused:false,acc:0,since:0,recording:false,keep};
@@ -2013,7 +2017,7 @@ async function openLive(keep){ if(rec) return rec; stopPlay(); micTest(false); c
 function closeLive(){ const r=rec; if(!r) return; rec=null; lvOff(); if(liveOn) liveEngine(false); monitor(false); guideStop(r); if(r.met) r.met.stop(); clearInterval(r.iv); cancelAnimationFrame(r.raf);
   try{ r.proc.disconnect(); r.src.disconnect(); r.mute.disconnect(); }catch(e){} r.stream.getTracks().forEach(t=>t.stop()); $('tuner').hidden=true; liveUI(); micTest(true); }
 function liveUI(){ const L=$('listen'), on=!!rec, recing=!!(rec&&rec.recording); L.classList.toggle('on',on&&!recing); L.textContent=on&&!recing?'■ Stop listening':'🎧 Listen'; L.disabled=recing; }
-$('listen').addEventListener('click',async()=>{ if(rec){ if(!rec.recording) closeLive(); return; } try{ await openLive(true); $('status').textContent='Listening — find your note, then press Record.'; }catch(e){ toast('Microphone blocked — allow it and try again'); } });
+$('listen').addEventListener('click',async()=>{ if(rec){ if(!rec.recording) closeLive(); return; } try{ await openLive(true); $('status').textContent='Listening — find your note, then press Record.'; }catch(e){ toast(micErr(e)); } });
 function restartMetro(){ if(!rec) return; if(rec.met){ rec.met.stop(); rec.met=null; } if($('metro').checked) rec.met=startMetro(ac(),Math.max(40,Math.min(240,+$('metBpm').value||100))); }
 $('metro').addEventListener('change',()=>{ if(rec&&!rec.recording) restartMetro(); else if(rec&&rec.recording&&!$('metro').checked&&rec.met){ rec.met.stop(); } });
 $('metBpm').addEventListener('change',()=>{ if(rec&&!rec.recording) restartMetro(); });
@@ -2025,7 +2029,7 @@ async function startRec(replace){
     $('rec').classList.add('on'); $('recT').textContent='Stop  0:00'; $('recPause').hidden=false; $('recCancel').hidden=false; $('recPause').textContent='❚❚ Pause'; showTakeBar(); liveUI();
     $('status').textContent=replace?`Recording over ${replace.base} — Stop replaces it, Cancel keeps the original.`:'Recording — sing, then press Stop.';
     if($('hear').checked&&!$('liveN').checked) monitor(true);
-  }catch(e){ toast(e&&e.name==='NotFoundError'?'That microphone is not connected — pick another one':'Microphone blocked — allow it and try again'); $('status').textContent='No microphone access.'; micTest(true); } }
+  }catch(e){ toast(micErr(e)); $('status').textContent='No microphone access.'; micTest(true); } }
 // ---- microphone picker: choose the input, remembered between launches, with a live level meter to check it
 const MIC_KEY='hum2midi_mic'; let micId=''; try{ micId=localStorage.getItem(MIC_KEY)||''; }catch(e){}
 const micConstraints=()=>({echoCancellation:false,noiseSuppression:false,autoGainControl:false,channelCount:1,...(micId?{deviceId:{exact:micId}}:{})});
@@ -2107,7 +2111,7 @@ let scaleT=[]; function playScale(k,mid){ scaleT.forEach(clearTimeout); scaleT=[
 async function kfStart(){ if(KF.on) return; try{ const had=!!rec; const R=rec||await openLive(false); if(!had) R.keep=false; KF.on=true; KF.R=R; R.wuCap=[]; liveSync();
     $('keyFind').textContent='■ Done'; $('keyRes').hidden=true; $('keyMsg').textContent='Listening… sing a riff or a bit of your song (5–10 seconds), then press Done.';
     KF.to=setTimeout(()=>kfStop(false),12000);
-  }catch(e){ toast('Microphone blocked: allow it and try again'); KF.on=false; } }
+  }catch(e){ toast(micErr(e)); KF.on=false; } }
 async function kfStop(cancel){ if(!KF.on) return; clearTimeout(KF.to); KF.on=false; const R=KF.R, ch=R.wuCap||[]; R.wuCap=null; $('keyFind').textContent='🎤 Sing a riff to find my key';
   if(R&&!R.keep&&!R.recording) closeLive(); else liveSync(); if(cancel) return;
   const n=ch.reduce((s2,c)=>s2+c.length,0); if(n<R.sr*1.5){ $('keyMsg').textContent='That was too short. Sing a little longer (5–10 seconds).'; return; }
@@ -2157,7 +2161,7 @@ async function startScale(){ try{ const had=!!rec; const R=rec||await openLive(f
     $('wuSkip').hidden=!voiceProfile(); $('wuSkip').textContent='Skip, record now'; $('wuTitle').textContent='On key? C · D · E · D · C';
     $('wuDots').innerHTML=WU.steps.map(()=>'<i></i>').join(''); scNext();
     $('status').textContent='Sing each note and hold it for 2 seconds. Recording starts after the last one.';
-  }catch(e){ toast('Microphone blocked: allow it and try again'); WU.on=false; } }
+  }catch(e){ toast(micErr(e)); WU.on=false; } }
 function scNext(){ WU.i++; [...$('wuDots').children].forEach((d,k)=>{ d.className=k<WU.i?'done':k===WU.i?'on':''; });
   if(WU.i>=WU.steps.length){ scDone(); return; }
   Object.assign(WU,{S:{scale:true},t0:performance.now(),hold:0,gap:0,bad:0,samp:[]});
@@ -2185,7 +2189,7 @@ async function startWarmup(mode){ if(mode==='scale') return startScale(); try{ c
     $('wuTitle').textContent=mode==='full'?'Warm-up · about 15 s':'Quick check · 2 notes';
     $('wuDots').innerHTML=WU.steps.map(()=>'<i></i>').join(''); wuNext();
     $('status').textContent=mode==='full'?'Warm-up: follow the steps in the tuner.':'Quick check: two notes, then record.';
-  }catch(e){ toast('Microphone blocked: allow it and try again'); WU.on=false; } }
+  }catch(e){ toast(micErr(e)); WU.on=false; } }
 function wuNext(){ $('wuPlay').hidden=true; const r=rec; WU.i++; [...$('wuDots').children].forEach((d,k)=>{ d.className=k<WU.i?'done':k===WU.i?'on':''; });
   if(WU.i>=WU.steps.length){ wuDone(); return; }
   const id=WU.steps[WU.i], S=WU_STEPS[id]; Object.assign(WU,{id,S,t0:performance.now(),hold:0,samp:[],ref:null});

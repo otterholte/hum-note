@@ -327,7 +327,40 @@ class LiveEngine:
         self.last["midi"] = None if m != m else round(m, 2)
         outdata[:] = self.S.render(frames)[:, None]
 
+    # The sound card is opened and closed on one dedicated thread prepared for Windows audio drivers (COM):
+    # ASIO drivers refuse to load from the web helper's request threads.
+    def _worker(self):
+        import ctypes, queue
+        try:
+            ctypes.windll.ole32.CoInitialize(None)
+        except Exception:
+            pass
+        while True:
+            fn, box, done = self._q.get()
+            try:
+                box["r"] = fn()
+            except Exception as e:  # never let the audio thread die
+                box["r"] = self.status(); self.error = repr(e)
+            done.set()
+
+    def _run(self, fn):
+        import queue
+        with self.lock:
+            if not getattr(self, "_q", None):
+                self._q = queue.Queue()
+                threading.Thread(target=self._worker, daemon=True, name="humnote-audio").start()
+        box, done = {}, threading.Event()
+        self._q.put((fn, box, done))
+        done.wait(15)
+        return box.get("r", self.status())
+
     def start(self):
+        return self._run(self._start)
+
+    def stop(self):
+        return self._run(self._stop)
+
+    def _start(self):
         if self.stream or not self.ok:
             return self.status()
         apis = sd.query_hostapis()
@@ -336,16 +369,17 @@ class LiveEngine:
             if "WASAPI" in h["name"] and h["default_input_device"] >= 0:
                 win_sr = int(sd.query_devices(h["default_input_device"])["default_samplerate"])
         tries = []
-        for h in apis:   # the interface's ASIO driver: ~4 ms in + 4 ms out
-            if h["name"] == "ASIO":
+        for h in apis:   # the interface's ASIO driver: ~4 ms in + 4 ms out. Always at Windows' own sample rate:
+            if h["name"] == "ASIO":  # another rate would switch the interface and cut off every other app's mic
                 for d in h["devices"]:
                     dd = sd.query_devices(d)
                     if dd["max_input_channels"] > 0 and dd["max_output_channels"] > 0:
                         tries.append((d, d, "ASIO", win_sr or int(dd["default_samplerate"]), 32, 0.001))
-        for word, label in (("WDM-KS", "direct"), ("WASAPI", "shared")):
-            for h in apis:
-                if word in h["name"] and h["default_input_device"] >= 0 and h["default_output_device"] >= 0:
-                    tries.append((h["default_input_device"], h["default_output_device"], label, None, 0, 0.003))
+        # fallback: Windows' shared path. (Not WDM-KS: it takes the mic for itself, so Humnote's window couldn't record.)
+        for h in apis:
+            if "WASAPI" in h["name"] and h["default_input_device"] >= 0 and h["default_output_device"] >= 0:
+                tries.append((h["default_input_device"], h["default_output_device"], "shared", None, 0, 0.003))
+        self.error = ""
         for di, do, label, sr0, bs, lat in tries:
             try:
                 ind, outd = sd.query_devices(di), sd.query_devices(do)
@@ -362,11 +396,12 @@ class LiveEngine:
                 s.start()
                 self.stream, self.mode = s, label
                 break
-            except Exception:
+            except Exception as e:
+                self.error = f"{label}: {e}"
                 continue
         return self.status()
 
-    def stop(self):
+    def _stop(self):
         if self.stream:
             try:
                 self.stream.stop(); self.stream.close()
@@ -377,7 +412,7 @@ class LiveEngine:
 
     def status(self):
         d = round(sum(self.stream.latency) * 1000) if self.stream else None
-        return {"available": self.ok, "on": bool(self.stream), "delay_ms": d, "mode": self.mode if self.stream else "", "xruns": self.xruns,
+        return {"available": self.ok, "on": bool(self.stream), "delay_ms": d, "mode": self.mode if self.stream else "", "xruns": self.xruns, "error": getattr(self, "error", ""),
                 "note": self.last["note"], "midi": self.last["midi"], **{k: self.params[k] for k in ("stick", "snd", "vel", "vowel", "vol")}}
 
 
